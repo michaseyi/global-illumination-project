@@ -1,0 +1,5 @@
+build/
+Slides-old/
+.DS_Store
+.cache/
+.vscode/
