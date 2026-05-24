@@ -6,4 +6,4 @@
 #include "geometry/sphere.h"
 #include "geometry/triangle.h"
 #include "geometry/plane.h"
-// Extend with cube.h, cone.h, group.h, etc. as needed.
+#include "geometry/quad.h"

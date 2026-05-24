@@ -2,22 +2,31 @@
 
 #pragma once
 
+#include <memory>
+
 #include "scene/scene.h"
 #include "scene/camera.h"
+
+class Material;
 
 struct SceneSetup {
     Scene scene;
     Camera camera;
 };
 
+enum class CornellSphere {
+    Glass,
+    RoughMetal,
+    Diffuse
+};
+
 class SceneFactory {
 public:
-    // Minimal starter scene:
-    // two spheres + one triangle floor + one point light
     static SceneSetup createStarterScene(int width, int height);
 
-    // Extend here with more reusable scenes:
-    // static SceneSetup createShadowTestScene(int width, int height);
-    // static SceneSetup createReflectionTestScene(int width, int height);
-    // static SceneSetup createCornellBoxScene(int width, int height);
+    // classic cornell box. if `sphereOverride` is non-null, it replaces the
+    // material assigned by `kind` on the right-hand sphere.
+    static SceneSetup createCornellBoxScene(int width, int height,
+                                            CornellSphere kind = CornellSphere::Glass,
+                                            std::shared_ptr<Material> sphereOverride = nullptr);
 };

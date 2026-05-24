@@ -1,6 +1,8 @@
-// Renderer owns the outer image loop and delegates radiance work to an integrator.
+// multithreaded, progressive tile renderer.
 
 #pragma once
+
+#include <functional>
 
 class Scene;
 class Camera;
@@ -9,9 +11,15 @@ class Image;
 
 class Renderer {
 public:
-    // samplesPerPixel is kept here so later assignments can extend the renderer
-    // without changing the GUI/application path again.
     explicit Renderer(int samplesPerPixel = 1);
+
+    // optional callback invoked after each completed sample pass:
+    //   passIndex (0-based), totalSpp.
+    using PassCallback = std::function<void(int passIndex, int totalSpp)>;
+
+    void setPassCallback(PassCallback cb) { m_passCallback = std::move(cb); }
+    void setTileSize(int s) { m_tileSize = s > 0 ? s : 32; }
+    void setThreadCount(int n) { m_threadCount = n; }
 
     void render(const Scene& scene,
                 const Camera& camera,
@@ -22,4 +30,7 @@ public:
 
 private:
     int m_samplesPerPixel = 1;
+    int m_tileSize = 32;
+    int m_threadCount = 0; // 0 -> hardware concurrency
+    PassCallback m_passCallback;
 };

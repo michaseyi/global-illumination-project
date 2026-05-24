@@ -1,4 +1,4 @@
-// Integrator computes the radiance carried by a ray.
+// integrator computes the radiance carried along a ray.
 
 #pragma once
 
@@ -11,7 +11,7 @@ class Integrator {
 public:
     virtual ~Integrator() = default;
 
-    // depth is used by recursive algorithms; the starter direct-lighting integrator
-    // keeps it mainly for interface compatibility.
-    virtual Color Li(const Ray& ray, const Scene& scene, int depth) const = 0;
+    // each call is one independent monte-carlo sample. integrators may use
+    // the thread-local rng (core/random.h) for any internal randomness.
+    virtual Color Li(const Ray& ray, const Scene& scene) const = 0;
 };

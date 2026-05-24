@@ -1,5 +1,4 @@
-// Sphere primitive for the minimal starter.
-// This is the simplest analytic shape and a good first test object.
+// analytic sphere primitive.
 
 #pragma once
 
@@ -16,6 +15,15 @@ public:
            std::shared_ptr<Material> material);
 
     bool intersect(const Ray& ray, HitRecord& rec) const override;
+    BBox bbox() const override;
+
+    double area() const override;
+    ShapeSample sample(double u1, double u2) const override;
+    ShapeSample sampleFromRef(const glm::dvec3& ref,
+                              double u1, double u2) const override;
+
+    const glm::dvec3& center() const { return m_center; }
+    double radius() const { return m_radius; }
 
 private:
     glm::dvec3 m_center;

@@ -3,3 +3,8 @@ Slides-old/
 .DS_Store
 .cache/
 .vscode/
+
+# render outputs at repo root
+/render.png
+/cornell.png
+/cornell_*.png
