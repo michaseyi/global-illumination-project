@@ -82,6 +82,22 @@ PbrMaterial::Params PbrMaterial::sampleParams(const HitRecord& rec) const {
             p.shadingNormal = glm::normalize(nt.x * T + nt.y * B + nt.z * N);
             p.tangent = T;
         }
+    } else if (m_height && rec.hasTangent) {
+        // bump-from-height: forward-difference the heightfield in tangent
+        // space, build the perturbed normal as (-dh/du, -dh/dv, 1).
+        double du = 1.0 / std::max(1, m_height->width());
+        double dv = 1.0 / std::max(1, m_height->height());
+        double h0 = m_height->sampleRGBA(rec.uv).r;
+        double hu = m_height->sampleRGBA(rec.uv + glm::dvec2(du, 0.0)).r;
+        double hv = m_height->sampleRGBA(rec.uv + glm::dvec2(0.0, dv)).r;
+        double dhdu = (hu - h0) * m_bumpScale;
+        double dhdv = (hv - h0) * m_bumpScale;
+        glm::dvec3 N = rec.shadingNormal;
+        glm::dvec3 T = glm::normalize(rec.tangent - N * glm::dot(N, rec.tangent));
+        glm::dvec3 B = glm::cross(N, T);
+        glm::dvec3 nt = glm::normalize(glm::dvec3(-dhdu, -dhdv, 1.0));
+        p.shadingNormal = glm::normalize(nt.x * T + nt.y * B + nt.z * N);
+        p.tangent = T;
     }
     return p;
 }
@@ -232,6 +248,7 @@ std::shared_ptr<PbrMaterial> PbrMaterial::loadFromDirectory(
     std::string metal   = findFile(files, {"metallic", "metalness", "metal"});
     std::string normal  = findFile(files, {"normalgl", "normal", "norm"});
     std::string aoFile  = findFile(files, {"ambientocclusion", "ao", "occlusion"});
+    std::string heightF = findFile(files, {"displacement", "height", "bump", "depth"});
 
     if (!base.empty()) {
         auto t = ImageTexture::load(join(base), /*sRGB=*/true);
@@ -254,6 +271,11 @@ std::shared_ptr<PbrMaterial> PbrMaterial::loadFromDirectory(
         auto t = ImageTexture::load(join(normal), /*sRGB=*/false);
         if (t) mat->setNormal(t);
         std::cerr << "[pbr] normal: " << normal << "\n";
+    } else if (!heightF.empty()) {
+        // bump-from-height fallback when no baked normal map is shipped.
+        auto t = ImageTexture::load(join(heightF), /*sRGB=*/false);
+        if (t) mat->setHeight(t);
+        std::cerr << "[pbr] height (bump): " << heightF << "\n";
     }
     if (!aoFile.empty()) {
         auto t = ImageTexture::load(join(aoFile), /*sRGB=*/false);

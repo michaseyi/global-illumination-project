@@ -29,10 +29,12 @@ public:
     void setMetallic(std::shared_ptr<ImageTexture> t)    { m_metallic  = std::move(t); }
     void setNormal(std::shared_ptr<ImageTexture> t)      { m_normal    = std::move(t); }
     void setAO(std::shared_ptr<ImageTexture> t)          { m_ao        = std::move(t); }
+    void setHeight(std::shared_ptr<ImageTexture> t)      { m_height    = std::move(t); }
 
     void setBasecolorFactor(const Color& c) { m_basecolorFactor = c; }
     void setRoughnessFactor(double r)       { m_roughnessFactor = r; }
     void setMetallicFactor(double m)        { m_metallicFactor  = m; }
+    void setBumpScale(double s)             { m_bumpScale = s; }
 
     MaterialType type() const override { return MaterialType::Unknown; }
     Color albedo(const HitRecord& rec) const override;
@@ -63,8 +65,10 @@ private:
     std::shared_ptr<ImageTexture> m_metallic;        // linear (red channel; or blue for orm)
     std::shared_ptr<ImageTexture> m_normal;          // linear tangent-space
     std::shared_ptr<ImageTexture> m_ao;              // linear scalar
+    std::shared_ptr<ImageTexture> m_height;          // linear scalar; used only when m_normal is null
 
     Color  m_basecolorFactor{1.0};
     double m_roughnessFactor = 1.0;
     double m_metallicFactor  = 1.0;
+    double m_bumpScale       = 5.0;
 };
