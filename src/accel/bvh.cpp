@@ -161,7 +161,9 @@ bool BVH::intersect(const Ray& ray, HitRecord& rec) const {
                       1.0 / ray.direction.y,
                       1.0 / ray.direction.z);
 
-    int stack[64];
+    // stack depth >= build's kMaxDepth (64) plus headroom for the push-both
+    // pattern, so traversal can never overflow the local stack.
+    int stack[128];
     int top = 0;
     stack[top++] = 0;
 
@@ -213,7 +215,7 @@ bool BVH::occluded(const Ray& ray) const {
     glm::dvec3 invDir(1.0 / ray.direction.x,
                       1.0 / ray.direction.y,
                       1.0 / ray.direction.z);
-    int stack[64];
+    int stack[128];
     int top = 0;
     stack[top++] = 0;
     while (top > 0) {

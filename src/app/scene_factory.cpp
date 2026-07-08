@@ -3,13 +3,59 @@
 #include "app/scene_factory.h"
 
 #include <cmath>
+#include <iostream>
 #include <memory>
 
 #include "geometry/geometry.h"
 #include "shading/shading.h"
 #include "core/constants.h"
+#include "io/obj_loader.h"
 
 namespace {
+
+// the five colored walls + ceiling area light shared by the cornell presets.
+// box bounds: x in [-1,1], y in [0,2], z in [-1,1]. left wall red, right wall
+// green, the rest white; a small emissive quad just below the ceiling.
+void addCornellShell(Scene& scene) {
+    auto white = std::make_shared<LambertMaterial>(Color(0.73, 0.73, 0.73));
+    auto red   = std::make_shared<LambertMaterial>(Color(0.65, 0.05, 0.05));
+    auto green = std::make_shared<LambertMaterial>(Color(0.12, 0.45, 0.15));
+
+    // floor
+    scene.addPrimitive(std::make_shared<Quad>(
+        glm::dvec3(-1.0, 0.0,  1.0),
+        glm::dvec3( 2.0, 0.0,  0.0),
+        glm::dvec3( 0.0, 0.0, -2.0), white));
+    // ceiling
+    scene.addPrimitive(std::make_shared<Quad>(
+        glm::dvec3(-1.0, 2.0, -1.0),
+        glm::dvec3( 2.0, 0.0,  0.0),
+        glm::dvec3( 0.0, 0.0,  2.0), white));
+    // back wall
+    scene.addPrimitive(std::make_shared<Quad>(
+        glm::dvec3(-1.0, 0.0, -1.0),
+        glm::dvec3( 2.0, 0.0,  0.0),
+        glm::dvec3( 0.0, 2.0,  0.0), white));
+    // left wall (red)
+    scene.addPrimitive(std::make_shared<Quad>(
+        glm::dvec3(-1.0, 0.0,  1.0),
+        glm::dvec3( 0.0, 0.0, -2.0),
+        glm::dvec3( 0.0, 2.0,  0.0), red));
+    // right wall (green)
+    scene.addPrimitive(std::make_shared<Quad>(
+        glm::dvec3( 1.0, 0.0, -1.0),
+        glm::dvec3( 0.0, 0.0,  2.0),
+        glm::dvec3( 0.0, 2.0,  0.0), green));
+
+    auto lightQuad = std::make_shared<Quad>(
+        glm::dvec3(-0.30, 1.99, -0.30),
+        glm::dvec3( 0.60, 0.00,  0.00),
+        glm::dvec3( 0.00, 0.00,  0.60),
+        std::make_shared<EmissiveMaterial>(Color(17.0, 12.0, 4.0)));
+    auto light = std::make_shared<AreaLight>(lightQuad,
+                                             Color(17.0, 12.0, 4.0), false);
+    scene.addAreaLight(lightQuad, light);
+}
 
 // add a single axis-aligned box (centered at `center`, with `size` and
 // `yawDeg` rotation around y) as 12 triangles.
@@ -167,6 +213,51 @@ SceneSetup SceneFactory::createCornellBoxScene(int width, int height,
     Camera camera(
         glm::dvec3(0.0, 1.0,  3.0),   // eye
         glm::dvec3(0.0, 1.0,  0.0),   // target
+        glm::dvec3(0.0, 1.0,  0.0),   // up
+        40.0, width, height
+    );
+    return {std::move(scene), camera};
+}
+
+SceneSetup SceneFactory::createMeshScene(int width, int height,
+                                         const std::string& objPath,
+                                         MeshMaterial kind) {
+    Scene scene;
+    addCornellShell(scene);
+
+    std::shared_ptr<Material> mat;
+    switch (kind) {
+        case MeshMaterial::Metal:
+            // warm gold-ish rough conductor
+            mat = std::make_shared<ConductorMaterial>(
+                Color(1.0, 0.78, 0.34), 0.12);
+            break;
+        case MeshMaterial::Glass:
+            mat = std::make_shared<DielectricMaterial>(1.0, 1.5);
+            break;
+        case MeshMaterial::Mirror:
+            mat = std::make_shared<MirrorMaterial>(Color(0.95));
+            break;
+        case MeshMaterial::Diffuse:
+        default:
+            mat = std::make_shared<LambertMaterial>(Color(0.72, 0.72, 0.76));
+            break;
+    }
+
+    // drop the model onto the floor (y = 0), centered, ~1.2 units across.
+    ObjLoader loader;
+    bool ok = loader.loadFitted(objPath, scene, mat,
+                                glm::dvec3(0.0, 0.0, 0.0), 1.2, true);
+    if (!ok) {
+        std::cerr << "[mesh] failed to load \"" << objPath
+                  << "\" — rendering an empty box.\n";
+    }
+
+    scene.build();
+
+    Camera camera(
+        glm::dvec3(0.0, 1.0,  3.4),   // eye
+        glm::dvec3(0.0, 0.5,  0.0),   // target
         glm::dvec3(0.0, 1.0,  0.0),   // up
         40.0, width, height
     );

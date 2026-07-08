@@ -23,6 +23,8 @@ struct Options {
     std::string sphereKind = "glass";
     std::string outPath = "render.png";
     std::string pbrDir;
+    std::string objPath;                 // mesh file for --scene mesh
+    std::string meshMaterial = "diffuse";
     int width = 600;
     int height = 600;
     int spp = 32;
@@ -43,18 +45,22 @@ Options parseArgs(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const char* k = argv[i];
         const char* v = nullptr;
+        // each value-taking flag only assigns when a value actually follows,
+        // so a trailing flag like `--w` (no value) can't deref a null pointer.
         if      (!std::strcmp(k, "--gui")) o.gui = true;
         else if (!std::strcmp(k, "--headless")) o.headless = true;
-        else if (!std::strcmp(k, "--scene"))      { nextArg(argc, argv, i, v); o.scene = v; }
-        else if (!std::strcmp(k, "--integrator")) { nextArg(argc, argv, i, v); o.integratorName = v; }
-        else if (!std::strcmp(k, "--sphere"))     { nextArg(argc, argv, i, v); o.sphereKind = v; }
-        else if (!std::strcmp(k, "--out"))        { nextArg(argc, argv, i, v); o.outPath = v; }
-        else if (!std::strcmp(k, "--pbr-dir"))    { nextArg(argc, argv, i, v); o.pbrDir = v; }
-        else if (!std::strcmp(k, "--w"))          { nextArg(argc, argv, i, v); o.width = std::atoi(v); }
-        else if (!std::strcmp(k, "--h"))          { nextArg(argc, argv, i, v); o.height = std::atoi(v); }
-        else if (!std::strcmp(k, "--spp"))        { nextArg(argc, argv, i, v); o.spp = std::atoi(v); }
-        else if (!std::strcmp(k, "--max-depth"))  { nextArg(argc, argv, i, v); o.maxDepth = std::atoi(v); }
-        else if (!std::strcmp(k, "--threads"))    { nextArg(argc, argv, i, v); o.threads = std::atoi(v); }
+        else if (!std::strcmp(k, "--scene"))        { if (nextArg(argc, argv, i, v)) o.scene = v; }
+        else if (!std::strcmp(k, "--integrator"))   { if (nextArg(argc, argv, i, v)) o.integratorName = v; }
+        else if (!std::strcmp(k, "--sphere"))       { if (nextArg(argc, argv, i, v)) o.sphereKind = v; }
+        else if (!std::strcmp(k, "--out"))          { if (nextArg(argc, argv, i, v)) o.outPath = v; }
+        else if (!std::strcmp(k, "--pbr-dir"))      { if (nextArg(argc, argv, i, v)) o.pbrDir = v; }
+        else if (!std::strcmp(k, "--obj"))          { if (nextArg(argc, argv, i, v)) o.objPath = v; }
+        else if (!std::strcmp(k, "--obj-material")) { if (nextArg(argc, argv, i, v)) o.meshMaterial = v; }
+        else if (!std::strcmp(k, "--w"))            { if (nextArg(argc, argv, i, v)) o.width = std::atoi(v); }
+        else if (!std::strcmp(k, "--h"))            { if (nextArg(argc, argv, i, v)) o.height = std::atoi(v); }
+        else if (!std::strcmp(k, "--spp"))          { if (nextArg(argc, argv, i, v)) o.spp = std::atoi(v); }
+        else if (!std::strcmp(k, "--max-depth"))    { if (nextArg(argc, argv, i, v)) o.maxDepth = std::atoi(v); }
+        else if (!std::strcmp(k, "--threads"))      { if (nextArg(argc, argv, i, v)) o.threads = std::atoi(v); }
         else {
             std::cerr << "[warn] unknown arg: " << k << "\n";
         }
@@ -66,6 +72,33 @@ CornellSphere parseSphere(const std::string& s) {
     if (s == "metal")   return CornellSphere::RoughMetal;
     if (s == "diffuse") return CornellSphere::Diffuse;
     return CornellSphere::Glass;
+}
+
+MeshMaterial parseMeshMaterial(const std::string& s) {
+    if (s == "metal" || s == "gold") return MeshMaterial::Metal;
+    if (s == "glass")                return MeshMaterial::Glass;
+    if (s == "mirror")               return MeshMaterial::Mirror;
+    return MeshMaterial::Diffuse;
+}
+
+std::shared_ptr<Material> maybeLoadPbr(const std::string& dir);
+
+// single source of truth for turning Options into a scene, shared by the
+// headless and gui paths so they can never drift apart.
+SceneSetup buildScene(const Options& o) {
+    if (o.scene == "starter") {
+        return SceneFactory::createStarterScene(o.width, o.height);
+    }
+    if (o.scene == "mesh") {
+        std::string path = o.objPath.empty()
+            ? std::string(PROJECT_SOURCE_DIR) + "/assets/models/teapot.obj"
+            : o.objPath;
+        return SceneFactory::createMeshScene(o.width, o.height, path,
+                                             parseMeshMaterial(o.meshMaterial));
+    }
+    auto pbr = maybeLoadPbr(o.pbrDir);
+    return SceneFactory::createCornellBoxScene(o.width, o.height,
+                                               parseSphere(o.sphereKind), pbr);
 }
 
 std::unique_ptr<Integrator> makeIntegrator(const std::string& name,
@@ -97,12 +130,7 @@ std::shared_ptr<Material> maybeLoadPbr(const std::string& dir) {
 
 int runHeadless(const Options& o) {
     Color bg(0.0);
-    auto pbr = maybeLoadPbr(o.pbrDir);
-    SceneSetup setup = (o.scene == "starter")
-        ? SceneFactory::createStarterScene(o.width, o.height)
-        : SceneFactory::createCornellBoxScene(o.width, o.height,
-                                              parseSphere(o.sphereKind),
-                                              pbr);
+    SceneSetup setup = buildScene(o);
 
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
 
@@ -143,12 +171,7 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     Color bg(0.0);
-    auto pbr = maybeLoadPbr(o.pbrDir);
-    SceneSetup setup = (o.scene == "starter")
-        ? SceneFactory::createStarterScene(o.width, o.height)
-        : SceneFactory::createCornellBoxScene(o.width, o.height,
-                                              parseSphere(o.sphereKind),
-                                              pbr);
+    SceneSetup setup = buildScene(o);
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
 
     Gui window(o.width, o.height, setup.scene, setup.camera, *integrator, o.spp);
