@@ -263,3 +263,33 @@ SceneSetup SceneFactory::createMeshScene(int width, int height,
     );
     return {std::move(scene), camera};
 }
+
+SceneSetup SceneFactory::createGlassShowcaseScene(int width, int height) {
+    Scene scene;
+    addCornellShell(scene);
+
+    auto glass       = std::make_shared<DielectricMaterial>(1.0, 1.5);
+    auto glassTinted = std::make_shared<DielectricMaterial>(
+        1.0, 1.5, Color(1.0), Color(0.80, 0.95, 1.0));
+    auto mirror      = std::make_shared<MirrorMaterial>(Color(0.95, 0.95, 0.95));
+
+    // back: large mirror sphere — picks up the whole box as a reflection.
+    scene.addPrimitive(std::make_shared<Sphere>(
+        glm::dvec3(-0.45, 0.55, -0.35), 0.55, mirror));
+    // front-right: clear glass sphere.
+    scene.addPrimitive(std::make_shared<Sphere>(
+        glm::dvec3( 0.45, 0.36, 0.30), 0.36, glass));
+    // front-left, smaller: faintly blue-tinted glass.
+    scene.addPrimitive(std::make_shared<Sphere>(
+        glm::dvec3(-0.10, 0.24, 0.55), 0.24, glassTinted));
+
+    scene.build();
+
+    Camera camera(
+        glm::dvec3(0.0, 1.0,  3.0),
+        glm::dvec3(0.0, 0.7,  0.0),
+        glm::dvec3(0.0, 1.0,  0.0),
+        40.0, width, height
+    );
+    return {std::move(scene), camera};
+}

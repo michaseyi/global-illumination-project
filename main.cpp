@@ -96,6 +96,9 @@ SceneSetup buildScene(const Options& o) {
         return SceneFactory::createMeshScene(o.width, o.height, path,
                                              parseMeshMaterial(o.meshMaterial));
     }
+    if (o.scene == "showcase") {
+        return SceneFactory::createGlassShowcaseScene(o.width, o.height);
+    }
     auto pbr = maybeLoadPbr(o.pbrDir);
     return SceneFactory::createCornellBoxScene(o.width, o.height,
                                                parseSphere(o.sphereKind), pbr);

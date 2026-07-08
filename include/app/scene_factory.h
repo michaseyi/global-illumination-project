@@ -45,4 +45,8 @@ public:
     static SceneSetup createMeshScene(int width, int height,
                                       const std::string& objPath,
                                       MeshMaterial kind = MeshMaterial::Diffuse);
+
+    // cornell-style box with two glass spheres and a mirror sphere — shows
+    // off refraction and reflection together.
+    static SceneSetup createGlassShowcaseScene(int width, int height);
 };
