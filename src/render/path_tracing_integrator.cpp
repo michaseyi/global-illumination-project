@@ -12,7 +12,7 @@
 #include "scene/hit_record.h"
 #include "geometry/primitive.h"
 #include "core/constants.h"
-#include "core/random.h"
+#include "core/sampler.h"
 #include "core/sampling.h"
 
 namespace {
@@ -39,7 +39,8 @@ PathTracingIntegrator::PathTracingIntegrator(int maxDepth, int rrStart,
                                              const Color& background)
     : m_maxDepth(maxDepth), m_rrStart(rrStart), m_background(background) {}
 
-Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene) const {
+Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene,
+                                Sampler& sampler) const {
     Color L(0.0);
     Color beta(1.0);
     Ray ray = primaryRay;
@@ -89,12 +90,13 @@ Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene) const
         // next-event estimation
         if (!surfaceIsDelta && numLights > 0) {
             int li = std::min(numLights - 1,
-                              int(randomDouble() * double(numLights)));
+                              int(sampler.get1D() * double(numLights)));
             const auto& light = lights[li];
             double lightPickPdf = 1.0 / double(numLights);
 
+            glm::dvec2 lu = sampler.get2D();
             LightSample ls = light->sampleLi(rec.position, rec.shadingNormal,
-                                             randomDouble(), randomDouble());
+                                             lu.x, lu.y);
             if (ls.pdf > 0.0 && !isBlack(ls.L)) {
                 Ray shadow(rec.position +
                            1e-4 * (glm::dot(ls.wi, rec.geometricNormal) > 0.0
@@ -119,7 +121,8 @@ Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene) const
         }
 
         // bsdf sample
-        glm::dvec3 u(randomDouble(), randomDouble(), randomDouble());
+        glm::dvec2 uxy = sampler.get2D();
+        glm::dvec3 u(uxy.x, uxy.y, sampler.get1D());
         MaterialSample ms = rec.material->sample(rec, wo, u);
         if (!ms.valid || ms.pdf <= 0.0 || isBlack(ms.weight)) break;
 
@@ -133,7 +136,7 @@ Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene) const
 
         if (bounces >= m_rrStart) {
             double q = std::max(0.05, 1.0 - std::max({beta.r, beta.g, beta.b}));
-            if (randomDouble() < q) break;
+            if (sampler.get1D() < q) break;
             beta /= (1.0 - q);
         }
 

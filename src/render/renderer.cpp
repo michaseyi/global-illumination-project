@@ -2,14 +2,18 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
+#include <cstdint>
 #include <thread>
 #include <vector>
+
+#include <glm/glm.hpp>
 
 #include "io/image.h"
 #include "render/integrator.h"
 #include "scene/camera.h"
 #include "scene/scene.h"
-#include "core/random.h"
+#include "core/sampler.h"
 
 Renderer::Renderer(int samplesPerPixel)
     : m_samplesPerPixel(samplesPerPixel > 0 ? samplesPerPixel : 1) {}
@@ -36,8 +40,12 @@ void Renderer::render(const Scene& scene,
         std::vector<std::thread> workers;
         workers.reserve(threads);
 
+        const Sampler::Mode mode = m_sampling == Sampling::Stratified
+                                       ? Sampler::Mode::Stratified
+                                       : Sampler::Mode::Random;
         for (int t = 0; t < threads; ++t) {
             workers.emplace_back([&]() {
+                Sampler sampler(mode, m_samplesPerPixel);
                 while (true) {
                     int idx = next.fetch_add(1, std::memory_order_relaxed);
                     if (idx >= tileCount) return;
@@ -50,12 +58,14 @@ void Renderer::render(const Scene& scene,
 
                     for (int y = y0; y < y1; ++y) {
                         for (int x = x0; x < x1; ++x) {
-                            double jx = randomDouble();
-                            double jy = randomDouble();
-                            double lu = randomDouble();
-                            double lv = randomDouble();
-                            Ray ray = camera.generateRay(x + jx, y + jy, lu, lv);
-                            Color c = integrator.Li(ray, scene);
+                            // dims 0-1: pixel jitter, 2-3: lens; the integrator
+                            // continues drawing from dim 4.
+                            sampler.startSample(x, y, pass);
+                            glm::dvec2 px = sampler.get2D();
+                            glm::dvec2 ls = sampler.get2D();
+                            Ray ray = camera.generateRay(x + px.x, y + px.y,
+                                                         ls.x, ls.y);
+                            Color c = integrator.Li(ray, scene, sampler);
                             image.addSample(x, y, c);
                         }
                     }

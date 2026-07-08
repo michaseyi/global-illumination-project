@@ -43,6 +43,7 @@ struct Options {
     std::string camEye;      // glTF: override camera eye "x,y,z"
     std::string camTarget;   // glTF: override camera target "x,y,z"
     double camFov = 0.0;     // glTF: override camera vertical fov (degrees)
+    std::string sampler = "stratified";  // sampling strategy: stratified|random
 };
 
 // parse "0.6" or "0.6,0.7,1.0" into a Color.
@@ -87,6 +88,7 @@ Options parseArgs(int argc, char** argv) {
         else if (!std::strcmp(k, "--cam-eye"))      { if (nextArg(argc, argv, i, v)) o.camEye = v; }
         else if (!std::strcmp(k, "--cam-target"))   { if (nextArg(argc, argv, i, v)) o.camTarget = v; }
         else if (!std::strcmp(k, "--cam-fov"))      { if (nextArg(argc, argv, i, v)) o.camFov = std::atof(v); }
+        else if (!std::strcmp(k, "--sampler"))      { if (nextArg(argc, argv, i, v)) o.sampler = v; }
         else {
             std::cerr << "[warn] unknown arg: " << k << "\n";
         }
@@ -192,6 +194,8 @@ int runHeadless(const Options& o) {
     Image image(o.width, o.height);
     Renderer renderer(o.spp);
     renderer.setThreadCount(o.threads);
+    renderer.setSampling(o.sampler == "random" ? Renderer::Sampling::Random
+                                               : Renderer::Sampling::Stratified);
     renderer.setPassCallback([&](int passIdx, int totalSpp) {
         if ((passIdx + 1) % 16 == 0 || passIdx + 1 == o.spp) {
             image.writePNG(o.outPath);

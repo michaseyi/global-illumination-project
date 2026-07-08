@@ -8,16 +8,18 @@
 #include "shading/material.h"
 #include "scene/hit_record.h"
 #include "core/constants.h"
-#include "core/random.h"
+#include "core/sampler.h"
 
 WhittedIntegrator::WhittedIntegrator(int maxDepth, const Color& background)
     : m_maxDepth(maxDepth), m_background(background) {}
 
-Color WhittedIntegrator::Li(const Ray& ray, const Scene& scene) const {
-    return Li_rec(ray, scene, 0);
+Color WhittedIntegrator::Li(const Ray& ray, const Scene& scene,
+                            Sampler& sampler) const {
+    return Li_rec(ray, scene, 0, sampler);
 }
 
-Color WhittedIntegrator::Li_rec(const Ray& ray, const Scene& scene, int depth) const {
+Color WhittedIntegrator::Li_rec(const Ray& ray, const Scene& scene, int depth,
+                                Sampler& sampler) const {
     HitRecord rec;
     if (!scene.intersect(ray, rec)) return m_background;
 
@@ -33,8 +35,9 @@ Color WhittedIntegrator::Li_rec(const Ray& ray, const Scene& scene, int depth) c
 
     if (!rec.material->isDelta()) {
         for (const auto& light : scene.lights()) {
+            glm::dvec2 lu = sampler.get2D();
             LightSample ls = light->sampleLi(rec.position, rec.shadingNormal,
-                                             randomDouble(), randomDouble());
+                                             lu.x, lu.y);
             if (ls.pdf <= 0.0) continue;
             double dist = ls.distance;
             Ray shadow(rec.position + 1e-4 * rec.shadingNormal,
@@ -50,14 +53,15 @@ Color WhittedIntegrator::Li_rec(const Ray& ray, const Scene& scene, int depth) c
     if (depth + 1 >= m_maxDepth) return L;
 
     if (rec.material->isDelta()) {
-        glm::dvec3 u(randomDouble(), randomDouble(), randomDouble());
+        glm::dvec2 uxy = sampler.get2D();
+        glm::dvec3 u(uxy.x, uxy.y, sampler.get1D());
         MaterialSample ms = rec.material->sample(rec, wo, u);
         if (ms.valid && ms.pdf > 0.0) {
             Ray next(rec.position + 1e-4 *
                      ((glm::dot(ms.wi, rec.geometricNormal) > 0.0)
                         ? rec.geometricNormal : -rec.geometricNormal),
                      ms.wi);
-            L += ms.weight * Li_rec(next, scene, depth + 1);
+            L += ms.weight * Li_rec(next, scene, depth + 1, sampler);
         }
     }
     return L;

@@ -8,13 +8,14 @@
 #include "shading/material.h"
 #include "scene/hit_record.h"
 #include "core/constants.h"
-#include "core/random.h"
+#include "core/sampler.h"
 
 DirectLightingIntegrator::DirectLightingIntegrator(int maxDepth,
                                                    const Color& background)
     : m_maxDepth(maxDepth), m_background(background) {}
 
-Color DirectLightingIntegrator::Li(const Ray& ray, const Scene& scene) const {
+Color DirectLightingIntegrator::Li(const Ray& ray, const Scene& scene,
+                                   Sampler& sampler) const {
     HitRecord rec;
     if (!scene.intersect(ray, rec)) return m_background;
 
@@ -31,8 +32,9 @@ Color DirectLightingIntegrator::Li(const Ray& ray, const Scene& scene) const {
     if (lights.empty()) return L;
 
     for (const auto& light : lights) {
+        glm::dvec2 lu = sampler.get2D();
         LightSample ls = light->sampleLi(rec.position, rec.shadingNormal,
-                                         randomDouble(), randomDouble());
+                                         lu.x, lu.y);
         if (ls.pdf <= 0.0) continue;
         glm::dvec3 to = ls.position - rec.position;
         double dist = glm::length(to);

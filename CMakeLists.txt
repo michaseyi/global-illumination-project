@@ -18,6 +18,7 @@ set(SOURCES
 
     src/core/random.cpp
     src/core/sampling.cpp
+    src/core/sampler.cpp
     src/scene/camera.cpp
     src/scene/scene.cpp
     src/geometry/sphere.cpp
@@ -56,6 +57,7 @@ set(HEADERS
     include/core/constants.h
     include/core/frame.h
     include/core/sampling.h
+    include/core/sampler.h
 
     include/scene/hit_record.h
     include/scene/camera.h

@@ -9,7 +9,8 @@ class DirectLightingIntegrator : public Integrator {
 public:
     DirectLightingIntegrator(int maxDepth, const Color& background);
 
-    Color Li(const Ray& ray, const Scene& scene) const override;
+    Color Li(const Ray& ray, const Scene& scene,
+             Sampler& sampler) const override;
 
 private:
     int m_maxDepth;          // unused but kept for backward compatibility

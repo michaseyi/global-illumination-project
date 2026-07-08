@@ -11,7 +11,8 @@ public:
                           int rrStart = 3,
                           const Color& background = Color(0.0));
 
-    Color Li(const Ray& ray, const Scene& scene) const override;
+    Color Li(const Ray& ray, const Scene& scene,
+             Sampler& sampler) const override;
 
 private:
     int m_maxDepth;
