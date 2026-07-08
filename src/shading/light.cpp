@@ -10,6 +10,24 @@
 #include "core/constants.h"
 
 
+DirectionalLight::DirectionalLight(const glm::dvec3& direction,
+                                   const Color& irradiance)
+    : m_direction(glm::normalize(direction)), m_irradiance(irradiance) {}
+
+LightSample DirectionalLight::sampleLi(const glm::dvec3& ref,
+                                       const glm::dvec3& /*refNormal*/,
+                                       double /*u1*/, double /*u2*/) const {
+    LightSample s;
+    s.wi = -m_direction;              // from surface toward the sun
+    s.distance = 1e7;                 // effectively infinite
+    s.position = ref + s.wi * s.distance;
+    s.normal = m_direction;
+    s.L = m_irradiance;               // constant, no 1/d^2 falloff
+    s.pdf = 1.0;
+    s.isDelta = true;
+    return s;
+}
+
 PointLight::PointLight(const glm::dvec3& position,
                        const Color& intensityColor,
                        double intensity)

@@ -59,6 +59,23 @@ private:
     double m_intensity;
 };
 
+// distant directional light (a "sun"): parallel rays, constant irradiance
+// regardless of position. delta light.
+class DirectionalLight : public Light {
+public:
+    // `direction` is the travel direction of the light (from sun to scene).
+    DirectionalLight(const glm::dvec3& direction, const Color& irradiance);
+
+    LightSample sampleLi(const glm::dvec3& ref,
+                         const glm::dvec3& refNormal,
+                         double u1, double u2) const override;
+    bool isDelta() const override { return true; }
+
+private:
+    glm::dvec3 m_direction;   // normalized travel direction
+    Color m_irradiance;
+};
+
 // diffuse area light bound to a primitive. emits constant radiance Le on its
 // front side (the side opposite the outward normal flip).
 class AreaLight : public Light {

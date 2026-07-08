@@ -43,6 +43,25 @@ std::shared_ptr<ImageTexture> ImageTexture::load(const std::string& path,
     return tex;
 }
 
+std::shared_ptr<ImageTexture> ImageTexture::fromPixels(const unsigned char* data,
+                                                       int width, int height,
+                                                       int channels, bool sRGB,
+                                                       Wrap wrap) {
+    if (!data || width <= 0 || height <= 0 || channels <= 0) return nullptr;
+    auto tex = std::shared_ptr<ImageTexture>(new ImageTexture());
+    tex->m_width = width;
+    tex->m_height = height;
+    tex->m_channels = channels;
+    tex->m_sRGB = sRGB;
+    tex->m_wrap = wrap;
+    tex->m_pixels.resize(size_t(width) * size_t(height) * size_t(channels));
+    const double inv = 1.0 / 255.0;
+    for (size_t i = 0; i < tex->m_pixels.size(); ++i) {
+        tex->m_pixels[i] = float(double(data[i]) * inv);
+    }
+    return tex;
+}
+
 int ImageTexture::wrapX(int x) const {
     if (m_wrap == Wrap::Repeat) {
         int m = x % m_width;

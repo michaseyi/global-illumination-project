@@ -1,0 +1,39 @@
+{
+  // cornell box that composes primitives + a loaded mesh, driven entirely by
+  // this file. render with:
+  //   --scene assets/scenes/showcase.json
+  "camera": {
+    "eye":    [0.0, 1.0, 3.2],
+    "target": [0.0, 0.85, 0.0],
+    "up":     [0.0, 1.0, 0.0],
+    "fov":    40
+  },
+
+  "materials": {
+    "white":  { "type": "lambert",    "color": [0.73, 0.73, 0.73] },
+    "red":    { "type": "lambert",    "color": [0.65, 0.05, 0.05] },
+    "green":  { "type": "lambert",    "color": [0.12, 0.45, 0.15] },
+    "glass":  { "type": "dielectric", "ior": 1.5 },
+    "mirror": { "type": "mirror",     "color": [0.95, 0.95, 0.95] },
+    "gold":   { "type": "conductor",  "color": [1.0, 0.78, 0.34], "roughness": 0.08 }
+  },
+
+  "objects": [
+    { "type": "quad", "material": "white", "origin": [-1,0, 1], "u": [2,0, 0], "v": [0,0,-2] },
+    { "type": "quad", "material": "white", "origin": [-1,2,-1], "u": [2,0, 0], "v": [0,0, 2] },
+    { "type": "quad", "material": "white", "origin": [-1,0,-1], "u": [2,0, 0], "v": [0,2, 0] },
+    { "type": "quad", "material": "red",   "origin": [-1,0, 1], "u": [0,0,-2], "v": [0,2, 0] },
+    { "type": "quad", "material": "green", "origin": [ 1,0,-1], "u": [0,0, 2], "v": [0,2, 0] },
+
+    { "type": "sphere", "material": "glass",  "center": [ 0.45, 0.30, 0.35], "radius": 0.30 },
+    { "type": "sphere", "material": "mirror", "center": [-0.50, 0.35,-0.25], "radius": 0.35 },
+
+    { "type": "mesh", "material": "gold", "file": "../models/teapot.obj",
+      "fit": { "center": [0.15, 0.0, 0.35], "size": 0.7, "sitOnGround": true } }
+  ],
+
+  "lights": [
+    { "type": "area", "color": [17, 12, 4], "twoSided": false,
+      "origin": [-0.30, 1.99, -0.30], "u": [0.60, 0, 0], "v": [0, 0, 0.60] }
+  ]
+}

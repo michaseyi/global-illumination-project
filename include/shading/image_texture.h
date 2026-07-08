@@ -18,6 +18,15 @@ public:
                                               bool sRGB = false,
                                               Wrap wrap = Wrap::Repeat);
 
+    // build from already-decoded 8-bit pixels (e.g. textures embedded in a
+    // .glb). `data` is `width*height*channels` bytes, row-major, top-left
+    // origin. returns null if inputs are invalid.
+    static std::shared_ptr<ImageTexture> fromPixels(const unsigned char* data,
+                                                     int width, int height,
+                                                     int channels,
+                                                     bool sRGB = false,
+                                                     Wrap wrap = Wrap::Repeat);
+
     Color value(const glm::dvec2& uv,
                 const glm::dvec3& position) const override;
 
