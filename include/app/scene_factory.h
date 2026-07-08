@@ -7,12 +7,14 @@
 
 #include "scene/scene.h"
 #include "scene/camera.h"
+#include "core/color.h"
 
 class Material;
 
 struct SceneSetup {
     Scene scene;
     Camera camera;
+    Color background{0.0};  // uniform environment radiance for escaped rays
 };
 
 enum class CornellSphere {
@@ -26,7 +28,8 @@ enum class MeshMaterial {
     Diffuse,
     Metal,
     Glass,
-    Mirror
+    Mirror,
+    FromFile  // use the materials/textures the .obj's .mtl assigns
 };
 
 class SceneFactory {

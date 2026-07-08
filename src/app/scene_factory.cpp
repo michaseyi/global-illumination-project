@@ -225,6 +225,10 @@ SceneSetup SceneFactory::createMeshScene(int width, int height,
     Scene scene;
     addCornellShell(scene);
 
+    // FromFile shades each face with the .mtl the model ships with; the other
+    // kinds override the whole mesh with one look. the material chosen here is
+    // also the fallback for faces the file leaves unassigned.
+    const bool useFileMaterials = (kind == MeshMaterial::FromFile);
     std::shared_ptr<Material> mat;
     switch (kind) {
         case MeshMaterial::Metal:
@@ -238,6 +242,7 @@ SceneSetup SceneFactory::createMeshScene(int width, int height,
         case MeshMaterial::Mirror:
             mat = std::make_shared<MirrorMaterial>(Color(0.95));
             break;
+        case MeshMaterial::FromFile:
         case MeshMaterial::Diffuse:
         default:
             mat = std::make_shared<LambertMaterial>(Color(0.72, 0.72, 0.76));
@@ -247,7 +252,8 @@ SceneSetup SceneFactory::createMeshScene(int width, int height,
     // drop the model onto the floor (y = 0), centered, ~1.2 units across.
     ObjLoader loader;
     bool ok = loader.loadFitted(objPath, scene, mat,
-                                glm::dvec3(0.0, 0.0, 0.0), 1.2, true);
+                                glm::dvec3(0.0, 0.0, 0.0), 1.2, true,
+                                useFileMaterials);
     if (!ok) {
         std::cerr << "[mesh] failed to load \"" << objPath
                   << "\" — rendering an empty box.\n";

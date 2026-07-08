@@ -39,6 +39,45 @@ After building, run:
 
 If you are using a single-config generator such as Ninja, the executable on Windows may also be located directly at `build\global_illu.exe`.
 
+## Scenes and Models
+
+The renderer runs headless with `--headless` and writes a PNG with `--out`.
+Common flags: `--w`/`--h` (resolution), `--spp` (samples per pixel),
+`--integrator path|direct|whitted`, `--max-depth`, `--threads`.
+
+### Built-in scenes (`--scene`)
+
+- `cornell` (default) — classic Cornell box; swap the right sphere with
+  `--sphere glass|metal|diffuse`.
+- `showcase` — two glass spheres and a mirror sphere.
+- `starter` — the original starter scene.
+- `mesh` — load a triangle mesh with `--obj <file.obj>` and shade it with
+  `--obj-material diffuse|metal|glass|mirror|file`. `file` uses the materials
+  and textures declared in the model's companion `.mtl` (per-face colors,
+  `map_Kd` diffuse textures, emission, transparency, metalness); the other
+  values override the whole mesh with a single look.
+
+```bash
+./build/global_illu --headless --scene mesh \
+  --obj assets/models/teapot.obj --obj-material file \
+  --w 600 --h 600 --spp 128 --out teapot.png
+```
+
+### JSON scene files
+
+Pass a path ending in `.json` to `--scene` to build a scene from a description
+file — no recompile needed. See `assets/scenes/showcase.json` for a worked
+example and `src/io/scene_loader.cpp` for the full schema. It supports a camera
+(with optional `aperture`/`focus` for depth of field), named `materials`
+(`lambert`/`mirror`/`dielectric`/`conductor`/`emissive`, with `texture` maps),
+`objects` (`sphere`/`quad`/`box`/`mesh`), and `lights` (`area`/`point`). Texture
+and mesh paths resolve relative to the scene file.
+
+```bash
+./build/global_illu --headless --scene assets/scenes/showcase.json \
+  --w 600 --h 600 --spp 256 --out scene.png
+```
+
 ## Running on Different Systems
 
 ### macOS
