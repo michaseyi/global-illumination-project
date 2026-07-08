@@ -150,7 +150,12 @@ struct TextureBuilder {
         int src = model.textures[textureIndex].source;
         if (src < 0 || src >= (int)model.images.size()) return nullptr;
         const tinygltf::Image& img = model.images[src];
-        return img.image.empty() ? nullptr : &img;
+        if (img.image.empty()) {
+            std::cerr << "[gltf] texture " << textureIndex << " (image \""
+                      << img.name << "\") has no decoded pixels\n";
+            return nullptr;
+        }
+        return &img;
     }
 
     std::shared_ptr<ImageTexture> color(int textureIndex, bool sRGB) {
@@ -183,6 +188,17 @@ struct TextureBuilder {
         return t;
     }
 };
+
+// which TEXCOORD_n set this material's textures reference. glTF allows a texture
+// to use a second UV set (e.g. Blender's plaster/concrete here use set 1); we
+// pick one set per material (they're consistent in practice) and feed it as the
+// mesh UVs. without this, textures sample the wrong UVs -> mapping artifacts.
+int materialTexCoord(const tinygltf::Material& m) {
+    const auto& bc = m.pbrMetallicRoughness.baseColorTexture;
+    if (bc.index >= 0) return bc.texCoord;
+    if (m.normalTexture.index >= 0) return m.normalTexture.texCoord;
+    return 0;
+}
 
 double emissiveStrength(const tinygltf::Material& m) {
     auto it = m.extensions.find("KHR_materials_emissive_strength");
@@ -280,7 +296,7 @@ void addLight(Scene& scene, const tinygltf::Light& l, const glm::dmat4& world,
 void emitPrimitive(Scene& scene, const Model& model,
                    const tinygltf::Primitive& prim,
                    const std::shared_ptr<Material>& material,
-                   const glm::dmat4& world,
+                   const glm::dmat4& world, int texCoordSet,
                    glm::dvec3& bbMin, glm::dvec3& bbMax) {
     if (prim.mode != TINYGLTF_MODE_TRIANGLES && prim.mode != -1) return;
 
@@ -293,7 +309,9 @@ void emitPrimitive(Scene& scene, const Model& model,
     std::vector<glm::dvec3> nrm =
         (nrmIt != prim.attributes.end()) ? readVec3(model, nrmIt->second)
                                          : std::vector<glm::dvec3>();
-    auto uvIt = prim.attributes.find("TEXCOORD_0");
+    // read the UV set the material references, falling back to set 0.
+    auto uvIt = prim.attributes.find("TEXCOORD_" + std::to_string(texCoordSet));
+    if (uvIt == prim.attributes.end()) uvIt = prim.attributes.find("TEXCOORD_0");
     std::vector<glm::dvec2> uv =
         (uvIt != prim.attributes.end()) ? readVec2(model, uvIt->second)
                                         : std::vector<glm::dvec2>();
@@ -347,6 +365,7 @@ struct Traversal {
     const Model& model;
     Scene& scene;
     std::vector<std::shared_ptr<Material>>& materials;
+    const std::vector<int>& matTexCoord;
     TextureBuilder& tb;
     double lightScale;
     std::shared_ptr<Material> fallback;
@@ -362,10 +381,12 @@ struct Traversal {
         if (node.mesh >= 0) {
             const tinygltf::Mesh& mesh = model.meshes[node.mesh];
             for (const auto& prim : mesh.primitives) {
-                std::shared_ptr<Material> mat =
-                    (prim.material >= 0 && prim.material < (int)materials.size())
-                        ? materials[prim.material] : fallback;
-                emitPrimitive(scene, model, prim, mat, world, bbMin, bbMax);
+                bool valid = prim.material >= 0 &&
+                             prim.material < (int)materials.size();
+                std::shared_ptr<Material> mat = valid ? materials[prim.material]
+                                                      : fallback;
+                int tc = valid ? matTexCoord[prim.material] : 0;
+                emitPrimitive(scene, model, prim, mat, world, tc, bbMin, bbMax);
             }
         }
         if (node.light >= 0 && node.light < (int)model.lights.size()) {
@@ -416,17 +437,26 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
     if (!err.empty())  std::cerr << "[gltf err] "  << err << "\n";
     if (!ok) { std::cerr << "[gltf] failed to load " << path << "\n"; return nullptr; }
 
+    int decoded = 0, emptyImg = 0;
+    for (const auto& im : model.images) (im.image.empty() ? emptyImg : decoded)++;
+    std::cerr << "[gltf] images: " << decoded << " decoded, " << emptyImg
+              << " empty (of " << model.images.size() << ")\n";
+
     Scene scene;
     TextureBuilder tb{model, {}};
 
     std::vector<std::shared_ptr<Material>> materials;
+    std::vector<int> matTexCoord;
     materials.reserve(model.materials.size());
+    matTexCoord.reserve(model.materials.size());
     for (const auto& m : model.materials) {
         materials.push_back(buildMaterial(model, m, tb));
+        matTexCoord.push_back(materialTexCoord(m));
     }
     auto fallback = std::make_shared<LambertMaterial>(Color(0.72, 0.72, 0.72));
 
-    Traversal trav{model, scene, materials, tb, lightScale, fallback, {}};
+    Traversal trav{model, scene, materials, matTexCoord, tb, lightScale,
+                   fallback, {}};
     int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
     if (model.scenes.empty()) {
         std::cerr << "[gltf] no scenes in file\n";
