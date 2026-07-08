@@ -15,6 +15,7 @@
 #include "io/gltf_loader.h"
 
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -280,6 +281,20 @@ std::shared_ptr<Material> buildMaterial(const Model& model,
             1.0, ior > 1.0 ? ior : 1.5, Color(1.0), baseFactor);
     }
 
+    // procedural mirror/chrome shaders can't be expressed in glTF's metallic-
+    // roughness model, so Blender flattens them to a fully-rough metal (no
+    // reflection). recognize them by name and use a true specular mirror.
+    std::string lname = m.name;
+    for (auto& c : lname) c = char(std::tolower((unsigned char)c));
+    if (lname.find("mirror") != std::string::npos ||
+        lname.find("chrome") != std::string::npos) {
+        Color refl = (baseFactor.r + baseFactor.g + baseFactor.b > 1e-4)
+                         ? baseFactor : Color(0.9);
+        std::cerr << "[gltf] \"" << m.name << "\" treated as a mirror "
+                     "(procedural material flattened by glTF export)\n";
+        return std::make_shared<MirrorMaterial>(refl);
+    }
+
     auto mat = std::make_shared<PbrMaterial>();
     mat->setBasecolorFactor(baseFactor);
     if (auto t = tb.color(pbr.baseColorTexture.index, /*sRGB=*/true)) {
@@ -298,19 +313,6 @@ std::shared_ptr<Material> buildMaterial(const Model& model,
     if (m.normalTexture.index >= 0) {
         if (auto n = tb.color(m.normalTexture.index, /*sRGB=*/false))
             mat->setNormal(n);
-    }
-
-    // procedural mirror/chrome shaders can't be expressed in glTF's metallic-
-    // roughness model, so Blender exports them as a fully-rough metal (no
-    // reflection). recognize them by name and restore a smooth mirror finish.
-    std::string lname = m.name;
-    for (auto& c : lname) c = char(std::tolower((unsigned char)c));
-    if (lname.find("mirror") != std::string::npos ||
-        lname.find("chrome") != std::string::npos) {
-        mat->setMetallicFactor(1.0);
-        mat->setRoughnessFactor(0.02);
-        std::cerr << "[gltf] \"" << m.name << "\" treated as a mirror "
-                     "(procedural material flattened by glTF export)\n";
     }
     return mat;
 }
@@ -481,11 +483,23 @@ int selectCamera(const std::vector<FoundCamera>& cams, const std::string& select
 
 }  // namespace
 
+static bool parseVec3(const std::string& s, glm::dvec3& out) {
+    double x, y, z;
+    if (std::sscanf(s.c_str(), "%lf,%lf,%lf", &x, &y, &z) == 3) {
+        out = glm::dvec3(x, y, z);
+        return true;
+    }
+    return false;
+}
+
 std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
                                                      int width, int height,
                                                      double lightScale,
                                                      const std::string& cameraSelect,
-                                                     double ceilingLight) {
+                                                     double ceilingLight,
+                                                     const std::string& camEye,
+                                                     const std::string& camTarget,
+                                                     double camFov) {
     Model model;
     tinygltf::TinyGLTF ctx;
     std::string err, warn;
@@ -565,6 +579,17 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
                   << (pick + 1) << "/" << trav.cameras.size() << ")\n";
     } else {
         std::cerr << "[gltf] no camera in file - using a default view\n";
+    }
+
+    // explicit camera override (for inspecting the scene from any angle).
+    glm::dvec3 oEye, oTarget;
+    if (!camEye.empty() && !camTarget.empty() &&
+        parseVec3(camEye, oEye) && parseVec3(camTarget, oTarget)) {
+        eye = oEye;
+        target = oTarget;
+        up = glm::dvec3(0, 1, 0);
+        if (camFov > 0.0) fovDeg = camFov;
+        std::cerr << "[gltf] camera overridden by --cam-eye/--cam-target\n";
     }
     Camera camera(eye, target, up, fovDeg, width, height);
 

@@ -18,9 +18,15 @@ public:
     // (empty = first camera). returns null on any error.
     // `ceilingLight` (>0) adds a downward area light across the top of the
     // scene's bounding box - a quick way to flood-light an imported room.
+    // when `camEye` and `camTarget` are both non-empty ("x,y,z"), they override
+    // the file's camera (with `camFov` degrees if > 0) - handy for inspecting an
+    // imported scene from an arbitrary angle.
     static std::unique_ptr<SceneSetup> loadFromFile(const std::string& path,
                                                     int width, int height,
                                                     double lightScale = 1.0,
                                                     const std::string& cameraSelect = "",
-                                                    double ceilingLight = 0.0);
+                                                    double ceilingLight = 0.0,
+                                                    const std::string& camEye = "",
+                                                    const std::string& camTarget = "",
+                                                    double camFov = 0.0);
 };

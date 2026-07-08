@@ -40,6 +40,9 @@ struct Options {
     double lightScale = 1.0; // multiplier for glTF punctual-light intensity
     std::string camera;      // glTF camera to use (node-name substring or index)
     double ceilingLight = 0.0; // glTF: add a ceiling area light of this intensity
+    std::string camEye;      // glTF: override camera eye "x,y,z"
+    std::string camTarget;   // glTF: override camera target "x,y,z"
+    double camFov = 0.0;     // glTF: override camera vertical fov (degrees)
 };
 
 // parse "0.6" or "0.6,0.7,1.0" into a Color.
@@ -81,6 +84,9 @@ Options parseArgs(int argc, char** argv) {
         else if (!std::strcmp(k, "--light-scale"))  { if (nextArg(argc, argv, i, v)) o.lightScale = std::atof(v); }
         else if (!std::strcmp(k, "--camera"))       { if (nextArg(argc, argv, i, v)) o.camera = v; }
         else if (!std::strcmp(k, "--ceiling-light")){ if (nextArg(argc, argv, i, v)) o.ceilingLight = std::atof(v); }
+        else if (!std::strcmp(k, "--cam-eye"))      { if (nextArg(argc, argv, i, v)) o.camEye = v; }
+        else if (!std::strcmp(k, "--cam-target"))   { if (nextArg(argc, argv, i, v)) o.camTarget = v; }
+        else if (!std::strcmp(k, "--cam-fov"))      { if (nextArg(argc, argv, i, v)) o.camFov = std::atof(v); }
         else {
             std::cerr << "[warn] unknown arg: " << k << "\n";
         }
@@ -124,7 +130,8 @@ SceneSetup buildScene(const Options& o) {
     if (endsWith(o.scene, ".glb") || endsWith(o.scene, ".gltf")) {
         if (auto setup = GltfLoader::loadFromFile(o.scene, o.width, o.height,
                                                   o.lightScale, o.camera,
-                                                  o.ceilingLight)) {
+                                                  o.ceilingLight, o.camEye,
+                                                  o.camTarget, o.camFov)) {
             return std::move(*setup);
         }
         std::cerr << "[scene] falling back to cornell box\n";
