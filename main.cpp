@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -9,6 +10,8 @@
 #include "app/gui.h"
 #include "app/scene_factory.h"
 #include "io/image.h"
+#include "io/scene_loader.h"
+#include "io/gltf_loader.h"
 #include "render/direct_lighting_integrator.h"
 #include "render/path_tracing_integrator.h"
 #include "render/renderer.h"
@@ -32,7 +35,20 @@ struct Options {
     int threads = 0;
     bool gui = false;
     bool headless = false;
+    bool hasBg = false;      // --bg overrides the scene/default environment
+    Color bgColor{0.0};      // uniform environment radiance for escaped rays
+    double lightScale = 1.0; // multiplier for glTF punctual-light intensity
+    std::string camera;      // glTF camera to use (node-name substring or index)
+    double ceilingLight = 0.0; // glTF: add a ceiling area light of this intensity
 };
+
+// parse "0.6" or "0.6,0.7,1.0" into a Color.
+Color parseColor(const std::string& s) {
+    double r = 0, g = 0, b = 0;
+    if (std::sscanf(s.c_str(), "%lf,%lf,%lf", &r, &g, &b) == 3) return Color(r, g, b);
+    double v = std::atof(s.c_str());
+    return Color(v, v, v);
+}
 
 bool nextArg(int argc, char** argv, int& i, const char*& v) {
     if (i + 1 >= argc) return false;
@@ -61,6 +77,10 @@ Options parseArgs(int argc, char** argv) {
         else if (!std::strcmp(k, "--spp"))          { if (nextArg(argc, argv, i, v)) o.spp = std::atoi(v); }
         else if (!std::strcmp(k, "--max-depth"))    { if (nextArg(argc, argv, i, v)) o.maxDepth = std::atoi(v); }
         else if (!std::strcmp(k, "--threads"))      { if (nextArg(argc, argv, i, v)) o.threads = std::atoi(v); }
+        else if (!std::strcmp(k, "--bg"))           { if (nextArg(argc, argv, i, v)) { o.bgColor = parseColor(v); o.hasBg = true; } }
+        else if (!std::strcmp(k, "--light-scale"))  { if (nextArg(argc, argv, i, v)) o.lightScale = std::atof(v); }
+        else if (!std::strcmp(k, "--camera"))       { if (nextArg(argc, argv, i, v)) o.camera = v; }
+        else if (!std::strcmp(k, "--ceiling-light")){ if (nextArg(argc, argv, i, v)) o.ceilingLight = std::atof(v); }
         else {
             std::cerr << "[warn] unknown arg: " << k << "\n";
         }
@@ -75,17 +95,41 @@ CornellSphere parseSphere(const std::string& s) {
 }
 
 MeshMaterial parseMeshMaterial(const std::string& s) {
-    if (s == "metal" || s == "gold") return MeshMaterial::Metal;
-    if (s == "glass")                return MeshMaterial::Glass;
-    if (s == "mirror")               return MeshMaterial::Mirror;
+    if (s == "metal" || s == "gold")         return MeshMaterial::Metal;
+    if (s == "glass")                        return MeshMaterial::Glass;
+    if (s == "mirror")                       return MeshMaterial::Mirror;
+    if (s == "file" || s == "mtl" || s == "auto") return MeshMaterial::FromFile;
     return MeshMaterial::Diffuse;
 }
 
 std::shared_ptr<Material> maybeLoadPbr(const std::string& dir);
 
+bool endsWith(const std::string& s, const std::string& suffix) {
+    return s.size() >= suffix.size() &&
+           s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 // single source of truth for turning Options into a scene, shared by the
 // headless and gui paths so they can never drift apart.
 SceneSetup buildScene(const Options& o) {
+    // a scene name ending in .json is a path to a json scene description.
+    if (endsWith(o.scene, ".json")) {
+        if (auto setup = SceneLoader::loadFromFile(o.scene, o.width, o.height)) {
+            return std::move(*setup);
+        }
+        std::cerr << "[scene] falling back to cornell box\n";
+        return SceneFactory::createCornellBoxScene(o.width, o.height);
+    }
+    // .glb / .gltf: a full glTF scene (geometry + materials + lights + camera).
+    if (endsWith(o.scene, ".glb") || endsWith(o.scene, ".gltf")) {
+        if (auto setup = GltfLoader::loadFromFile(o.scene, o.width, o.height,
+                                                  o.lightScale, o.camera,
+                                                  o.ceilingLight)) {
+            return std::move(*setup);
+        }
+        std::cerr << "[scene] falling back to cornell box\n";
+        return SceneFactory::createCornellBoxScene(o.width, o.height);
+    }
     if (o.scene == "starter") {
         return SceneFactory::createStarterScene(o.width, o.height);
     }
@@ -132,8 +176,9 @@ std::shared_ptr<Material> maybeLoadPbr(const std::string& dir) {
 }
 
 int runHeadless(const Options& o) {
-    Color bg(0.0);
     SceneSetup setup = buildScene(o);
+    // --bg overrides the scene's environment, which overrides the black default.
+    Color bg = o.hasBg ? o.bgColor : setup.background;
 
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
 
@@ -173,8 +218,8 @@ int main(int argc, char** argv) {
     }
 
     QApplication app(argc, argv);
-    Color bg(0.0);
     SceneSetup setup = buildScene(o);
+    Color bg = o.hasBg ? o.bgColor : setup.background;
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
 
     Gui window(o.width, o.height, setup.scene, setup.camera, *integrator, o.spp);

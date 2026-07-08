@@ -41,6 +41,8 @@ set(SOURCES
 
     src/io/image.cpp
     src/io/obj_loader.cpp
+    src/io/scene_loader.cpp
+    src/io/gltf_loader.cpp
 )
 
 set(HEADERS
@@ -84,6 +86,9 @@ set(HEADERS
 
     include/io/image.h
     include/io/obj_loader.h
+    include/io/scene_loader.h
+    include/io/json.h
+    include/io/gltf_loader.h
 )
 
 add_executable(global_illu ${SOURCES} ${HEADERS})
