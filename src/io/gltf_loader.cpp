@@ -200,6 +200,40 @@ int materialTexCoord(const tinygltf::Material& m) {
     return 0;
 }
 
+// KHR_texture_transform: UV offset/rotation/scale for tiling. read from the
+// base-color texture (materials here use one transform for all their maps).
+struct UvXform {
+    glm::dvec2 offset{0.0, 0.0};
+    glm::dvec2 scale{1.0, 1.0};
+    double rot = 0.0;
+    bool active = false;
+};
+
+UvXform materialUvXform(const tinygltf::Material& m) {
+    UvXform x;
+    const auto& bc = m.pbrMetallicRoughness.baseColorTexture;
+    auto it = bc.extensions.find("KHR_texture_transform");
+    if (it == bc.extensions.end()) return x;
+    const tinygltf::Value& e = it->second;
+    if (e.Has("offset")) {
+        const auto& o = e.Get("offset");
+        if (o.IsArray() && o.ArrayLen() >= 2) {
+            x.offset.x = o.Get(0).GetNumberAsDouble();
+            x.offset.y = o.Get(1).GetNumberAsDouble();
+        }
+    }
+    if (e.Has("scale")) {
+        const auto& s = e.Get("scale");
+        if (s.IsArray() && s.ArrayLen() >= 2) {
+            x.scale.x = s.Get(0).GetNumberAsDouble();
+            x.scale.y = s.Get(1).GetNumberAsDouble();
+        }
+    }
+    if (e.Has("rotation")) x.rot = e.Get("rotation").GetNumberAsDouble();
+    x.active = true;
+    return x;
+}
+
 double emissiveStrength(const tinygltf::Material& m) {
     auto it = m.extensions.find("KHR_materials_emissive_strength");
     if (it != m.extensions.end() && it->second.Has("emissiveStrength")) {
@@ -265,6 +299,19 @@ std::shared_ptr<Material> buildMaterial(const Model& model,
         if (auto n = tb.color(m.normalTexture.index, /*sRGB=*/false))
             mat->setNormal(n);
     }
+
+    // procedural mirror/chrome shaders can't be expressed in glTF's metallic-
+    // roughness model, so Blender exports them as a fully-rough metal (no
+    // reflection). recognize them by name and restore a smooth mirror finish.
+    std::string lname = m.name;
+    for (auto& c : lname) c = char(std::tolower((unsigned char)c));
+    if (lname.find("mirror") != std::string::npos ||
+        lname.find("chrome") != std::string::npos) {
+        mat->setMetallicFactor(1.0);
+        mat->setRoughnessFactor(0.02);
+        std::cerr << "[gltf] \"" << m.name << "\" treated as a mirror "
+                     "(procedural material flattened by glTF export)\n";
+    }
     return mat;
 }
 
@@ -297,6 +344,7 @@ void emitPrimitive(Scene& scene, const Model& model,
                    const tinygltf::Primitive& prim,
                    const std::shared_ptr<Material>& material,
                    const glm::dmat4& world, int texCoordSet,
+                   const UvXform& xform,
                    glm::dvec3& bbMin, glm::dvec3& bbMax) {
     if (prim.mode != TINYGLTF_MODE_TRIANGLES && prim.mode != -1) return;
 
@@ -315,6 +363,14 @@ void emitPrimitive(Scene& scene, const Model& model,
     std::vector<glm::dvec2> uv =
         (uvIt != prim.attributes.end()) ? readVec2(model, uvIt->second)
                                         : std::vector<glm::dvec2>();
+    if (xform.active) {  // apply KHR_texture_transform (offset/rotation/scale)
+        double c = std::cos(xform.rot), s = std::sin(xform.rot);
+        for (auto& t : uv) {
+            double su = t.x * xform.scale.x, sv = t.y * xform.scale.y;
+            t = glm::dvec2(c * su - s * sv + xform.offset.x,
+                           s * su + c * sv + xform.offset.y);
+        }
+    }
 
     glm::dmat3 normalMatrix = glm::dmat3(glm::transpose(glm::inverse(world)));
     auto P = [&](uint32_t i) { return glm::dvec3(world * glm::dvec4(pos[i], 1.0)); };
@@ -366,6 +422,7 @@ struct Traversal {
     Scene& scene;
     std::vector<std::shared_ptr<Material>>& materials;
     const std::vector<int>& matTexCoord;
+    const std::vector<UvXform>& matUvXform;
     TextureBuilder& tb;
     double lightScale;
     std::shared_ptr<Material> fallback;
@@ -386,7 +443,9 @@ struct Traversal {
                 std::shared_ptr<Material> mat = valid ? materials[prim.material]
                                                       : fallback;
                 int tc = valid ? matTexCoord[prim.material] : 0;
-                emitPrimitive(scene, model, prim, mat, world, tc, bbMin, bbMax);
+                static const UvXform kNoXform;
+                const UvXform& xf = valid ? matUvXform[prim.material] : kNoXform;
+                emitPrimitive(scene, model, prim, mat, world, tc, xf, bbMin, bbMax);
             }
         }
         if (node.light >= 0 && node.light < (int)model.lights.size()) {
@@ -447,16 +506,19 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
 
     std::vector<std::shared_ptr<Material>> materials;
     std::vector<int> matTexCoord;
+    std::vector<UvXform> matUvXform;
     materials.reserve(model.materials.size());
     matTexCoord.reserve(model.materials.size());
+    matUvXform.reserve(model.materials.size());
     for (const auto& m : model.materials) {
         materials.push_back(buildMaterial(model, m, tb));
         matTexCoord.push_back(materialTexCoord(m));
+        matUvXform.push_back(materialUvXform(m));
     }
     auto fallback = std::make_shared<LambertMaterial>(Color(0.72, 0.72, 0.72));
 
-    Traversal trav{model, scene, materials, matTexCoord, tb, lightScale,
-                   fallback, {}};
+    Traversal trav{model, scene, materials, matTexCoord, matUvXform, tb,
+                   lightScale, fallback, {}};
     int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
     if (model.scenes.empty()) {
         std::cerr << "[gltf] no scenes in file\n";
