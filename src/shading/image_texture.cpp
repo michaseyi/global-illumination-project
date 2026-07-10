@@ -3,7 +3,6 @@
 #include "shading/image_texture.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#define STBI_NO_LINEAR
 #include "stb_image.h"
 
 #include <algorithm>
@@ -59,6 +58,26 @@ std::shared_ptr<ImageTexture> ImageTexture::fromPixels(const unsigned char* data
     for (size_t i = 0; i < tex->m_pixels.size(); ++i) {
         tex->m_pixels[i] = float(double(data[i]) * inv);
     }
+    return tex;
+}
+
+std::shared_ptr<ImageTexture> ImageTexture::loadHDR(const std::string& path,
+                                                    Wrap wrap) {
+    int w = 0, h = 0, ch = 0;
+    float* data = stbi_loadf(path.c_str(), &w, &h, &ch, 3);
+    if (!data) {
+        std::cerr << "[image] failed to load hdr " << path << ": "
+                  << stbi_failure_reason() << "\n";
+        return nullptr;
+    }
+    auto tex = std::shared_ptr<ImageTexture>(new ImageTexture());
+    tex->m_width = w;
+    tex->m_height = h;
+    tex->m_channels = 3;
+    tex->m_sRGB = false;  // radiance values are already linear
+    tex->m_wrap = wrap;
+    tex->m_pixels.assign(data, data + size_t(w) * h * 3);
+    stbi_image_free(data);
     return tex;
 }
 

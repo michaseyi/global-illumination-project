@@ -98,10 +98,15 @@ private:
 
 class DielectricMaterial : public Material {
 public:
+    // `thin` models a two-sided sheet (window pane): fresnel reflection off the
+    // surface, transmission straight through with no bend - the two parallel
+    // faces of real glazing cancel each other's refraction. use for windows;
+    // solid glass objects (spheres etc) keep thin=false.
     DielectricMaterial(double iorOut, double iorIn,
                        const Color& reflectance = Color(1.0),
                        const Color& transmittance = Color(1.0),
-                       double roughness = 0.0);
+                       double roughness = 0.0,
+                       bool thin = false);
 
     MaterialType type() const override { return MaterialType::Dielectric; }
     Color albedo(const HitRecord&) const override { return m_reflectance; }
@@ -114,7 +119,7 @@ public:
     double pdf(const HitRecord& rec,
                const glm::dvec3& wo,
                const glm::dvec3& wi) const override;
-    bool isDelta() const override { return m_roughness <= 1e-4; }
+    bool isDelta() const override { return m_thin || m_roughness <= 1e-4; }
 
 private:
     double m_iorOut;
@@ -123,6 +128,7 @@ private:
     Color  m_transmittance;
     double m_roughness;
     double m_alpha;
+    bool   m_thin;
 };
 
 class ConductorMaterial : public Material {

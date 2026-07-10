@@ -13,10 +13,10 @@ class BVH : public AccelStructure {
 public:
     BVH() = default;
 
-    void build(const std::vector<Primitive*>& prims);
+    void build(const std::vector<Primitive*>& prims) override;
 
     bool intersect(const Ray& ray, HitRecord& rec) const override;
-    bool occluded(const Ray& ray) const;
+    bool occluded(const Ray& ray) const override;
 
     BBox bounds() const {
         return m_nodes.empty() ? BBox::empty() : m_nodes[0].bounds;

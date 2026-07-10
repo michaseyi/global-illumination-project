@@ -56,9 +56,11 @@ Color PathTracingIntegrator::Li(const Ray& primaryRay, const Scene& scene,
         bool hit = scene.intersect(ray, rec);
 
         if (!hit) {
-            if (prevSpecular || bounces == 0) {
-                L += beta * m_background;
-            }
+            // the environment is not next-event sampled, so every escaped path
+            // contributes its full throughput. (gating this on prevSpecular -
+            // the mis rule for nee-sampled lights - silently dropped all
+            // indirect background light from diffuse bounces.)
+            L += beta * escapedRadiance(ray.direction, m_background);
             break;
         }
 

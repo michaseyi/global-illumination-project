@@ -125,13 +125,15 @@ MaterialSample MirrorMaterial::sample(const HitRecord& rec,
 DielectricMaterial::DielectricMaterial(double iorOut, double iorIn,
                                        const Color& reflectance,
                                        const Color& transmittance,
-                                       double roughness)
+                                       double roughness,
+                                       bool thin)
     : m_iorOut(iorOut),
       m_iorIn(iorIn),
       m_reflectance(reflectance),
       m_transmittance(transmittance),
       m_roughness(roughness),
-      m_alpha(roughnessToAlpha(roughness)) {}
+      m_alpha(roughnessToAlpha(roughness)),
+      m_thin(thin) {}
 
 Color DielectricMaterial::evaluate(const HitRecord& rec,
                                    const glm::dvec3& wo,
@@ -179,6 +181,28 @@ MaterialSample DielectricMaterial::sample(const HitRecord& rec,
     Frame f(rec.shadingNormal);
     glm::dvec3 woL = f.toLocal(wo);
     if (woL.z == 0.0) return MaterialSample{};
+
+    if (m_thin) {
+        // thin sheet: the pane's two parallel faces cancel refraction, so
+        // transmission continues straight through. reflectance accounts for
+        // both interfaces (series sum 2F/(1+F)).
+        double F = fresnelDielectric(std::abs(woL.z), m_iorOut, m_iorIn);
+        F = 2.0 * F / (1.0 + F);
+        MaterialSample s;
+        if (u.z < F) {
+            glm::dvec3 wiL(-woL.x, -woL.y, woL.z);  // mirror about the pane
+            s.wi = f.toWorld(wiL);
+            s.weight = m_reflectance;
+            s.pdf = F;
+        } else {
+            s.wi = -wo;  // straight through, tinted
+            s.weight = m_transmittance;
+            s.pdf = 1.0 - F;
+        }
+        s.delta = true;
+        s.valid = true;
+        return s;
+    }
 
     bool entering = woL.z > 0.0;
     double etaI = entering ? m_iorOut : m_iorIn;

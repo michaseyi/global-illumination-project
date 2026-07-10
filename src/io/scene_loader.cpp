@@ -43,6 +43,7 @@
 #include "geometry/geometry.h"
 #include "io/json.h"
 #include "io/obj_loader.h"
+#include "shading/environment.h"
 #include "shading/image_texture.h"
 #include "shading/shading.h"
 
@@ -102,7 +103,10 @@ std::shared_ptr<Material> buildMaterial(const json::Value& m,
     if (type == "dielectric") {
         double ior = m["ior"].asNumber(1.5);
         Color tint = m.has("tint") ? color(m["tint"], Color(1.0)) : Color(1.0);
-        return std::make_shared<DielectricMaterial>(1.0, ior, Color(1.0), tint);
+        // "thin": window-pane glass (no refraction bend), for glazing.
+        return std::make_shared<DielectricMaterial>(1.0, ior, Color(1.0), tint,
+                                                    0.0,
+                                                    m["thin"].asBool(false));
     }
     if (type == "conductor") {
         return std::make_shared<ConductorMaterial>(
@@ -239,15 +243,24 @@ std::unique_ptr<SceneSetup> SceneLoader::loadFromFile(const std::string& path,
                   cam["aperture"].asNumber(0.0),
                   cam["focus"].asNumber(1.0));
 
-    // optional uniform environment ("background"/"environment"): a scalar or
-    // [r,g,b]. rays that escape the scene return this radiance, so it doubles as
-    // a soft fill/daylight through windows and openings.
+    // optional environment ("background"/"environment"). rays that escape the
+    // scene return this radiance, so it doubles as daylight through windows.
+    //   scalar / [r,g,b]                          -> uniform color
+    //   "sky.hdr" or {"file":..,"scale":,"rotation":} -> equirect hdr panorama
     Color bg(0.0);
+    std::shared_ptr<EnvironmentMap> envMap;
     const json::Value& env = root.has("background") ? root["background"]
                                                     : root["environment"];
     if (env.isArray())       bg = color(env, Color(0.0));
     else if (env.isNumber()) bg = Color(env.asNumber(0.0));
+    else if (env.isString()) {
+        envMap = EnvironmentMap::load(resolve(baseDir, env.asString()));
+    } else if (env.isObject() && env.has("file")) {
+        envMap = EnvironmentMap::load(resolve(baseDir, env["file"].asString()),
+                                      env["scale"].asNumber(1.0),
+                                      env["rotation"].asNumber(0.0));
+    }
 
     return std::unique_ptr<SceneSetup>(
-        new SceneSetup{std::move(scene), camera, bg});
+        new SceneSetup{std::move(scene), camera, bg, envMap});
 }

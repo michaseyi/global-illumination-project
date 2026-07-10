@@ -21,7 +21,8 @@ Color WhittedIntegrator::Li(const Ray& ray, const Scene& scene,
 Color WhittedIntegrator::Li_rec(const Ray& ray, const Scene& scene, int depth,
                                 Sampler& sampler) const {
     HitRecord rec;
-    if (!scene.intersect(ray, rec)) return m_background;
+    if (!scene.intersect(ray, rec))
+        return escapedRadiance(ray.direction, m_background);
 
     Color L(0.0);
     if (rec.areaLight) {

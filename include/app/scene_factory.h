@@ -10,11 +10,13 @@
 #include "core/color.h"
 
 class Material;
+class EnvironmentMap;
 
 struct SceneSetup {
     Scene scene;
     Camera camera;
     Color background{0.0};  // uniform environment radiance for escaped rays
+    std::shared_ptr<EnvironmentMap> envMap;  // optional hdr panorama (wins)
 };
 
 enum class CornellSphere {

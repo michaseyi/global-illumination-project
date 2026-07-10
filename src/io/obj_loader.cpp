@@ -265,7 +265,10 @@ std::shared_ptr<Material> buildMtlMaterial(const tinyobj::material_t& m,
         double ior = (m.ior > 1.0) ? m.ior : 1.5;
         Color tint = toColor(m.transmittance);
         if (!anyPositive(tint)) tint = Color(1.0);
-        return std::make_shared<DielectricMaterial>(1.0, ior, Color(1.0), tint);
+        // thin: window glazing - transmission passes straight through (see
+        // DielectricMaterial). obj/mtl assets model panes, not solid glass.
+        return std::make_shared<DielectricMaterial>(1.0, ior, Color(1.0), tint,
+                                                    0.0, /*thin=*/true);
     }
 
     // scalar-PBR metals (Pm authored directly, no maps) -> conductor.

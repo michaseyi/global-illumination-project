@@ -18,6 +18,10 @@ public:
                                               bool sRGB = false,
                                               Wrap wrap = Wrap::Repeat);
 
+    // load a radiance .hdr file at full float range (linear, no srgb decode).
+    static std::shared_ptr<ImageTexture> loadHDR(const std::string& path,
+                                                 Wrap wrap = Wrap::Repeat);
+
     // build from already-decoded 8-bit pixels (e.g. textures embedded in a
     // .glb). `data` is `width*height*channels` bytes, row-major, top-left
     // origin. returns null if inputs are invalid.

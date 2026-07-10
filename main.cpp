@@ -44,6 +44,10 @@ struct Options {
     std::string camTarget;   // glTF: override camera target "x,y,z"
     double camFov = 0.0;     // glTF: override camera vertical fov (degrees)
     std::string sampler = "stratified";  // sampling strategy: stratified|random
+    std::string accel = "bvh";           // ray-query structure: bvh|octree|brute
+    std::string envPath;      // equirect .hdr environment (overrides scene's)
+    double envScale = 1.0;
+    double envRot = 0.0;      // degrees around +Y
 };
 
 // parse "0.6" or "0.6,0.7,1.0" into a Color.
@@ -89,6 +93,10 @@ Options parseArgs(int argc, char** argv) {
         else if (!std::strcmp(k, "--cam-target"))   { if (nextArg(argc, argv, i, v)) o.camTarget = v; }
         else if (!std::strcmp(k, "--cam-fov"))      { if (nextArg(argc, argv, i, v)) o.camFov = std::atof(v); }
         else if (!std::strcmp(k, "--sampler"))      { if (nextArg(argc, argv, i, v)) o.sampler = v; }
+        else if (!std::strcmp(k, "--accel"))        { if (nextArg(argc, argv, i, v)) o.accel = v; }
+        else if (!std::strcmp(k, "--env"))          { if (nextArg(argc, argv, i, v)) o.envPath = v; }
+        else if (!std::strcmp(k, "--env-scale"))    { if (nextArg(argc, argv, i, v)) o.envScale = std::atof(v); }
+        else if (!std::strcmp(k, "--env-rot"))      { if (nextArg(argc, argv, i, v)) o.envRot = std::atof(v); }
         else {
             std::cerr << "[warn] unknown arg: " << k << "\n";
         }
@@ -157,6 +165,32 @@ SceneSetup buildScene(const Options& o) {
                                                parseSphere(o.sphereKind), pbr);
 }
 
+// resolve the environment for escaped rays: --env wins over the scene file's.
+std::shared_ptr<EnvironmentMap> resolveEnv(const Options& o,
+                                           const SceneSetup& setup) {
+    if (!o.envPath.empty()) {
+        return EnvironmentMap::load(o.envPath, o.envScale, o.envRot);
+    }
+    return setup.envMap;
+}
+
+// scene factories build with the default bvh; a non-default --accel triggers a
+// timed rebuild here so the choice (and its build cost) is visible.
+void applyAccel(Scene& scene, const std::string& name) {
+    Scene::AccelType type = Scene::AccelType::BVH;
+    if (name == "octree")                    type = Scene::AccelType::Octree;
+    else if (name == "brute" || name == "linear") type = Scene::AccelType::Linear;
+    else if (name != "bvh") {
+        std::cerr << "[warn] unknown accel \"" << name << "\", using bvh\n";
+    }
+    if (type == scene.accelType()) return;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    scene.setAccel(type);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    std::cerr << "[accel] " << name << " built in " << ms << " ms\n";
+}
+
 std::unique_ptr<Integrator> makeIntegrator(const std::string& name,
                                            int maxDepth,
                                            const Color& bg) {
@@ -186,10 +220,12 @@ std::shared_ptr<Material> maybeLoadPbr(const std::string& dir) {
 
 int runHeadless(const Options& o) {
     SceneSetup setup = buildScene(o);
+    applyAccel(setup.scene, o.accel);
     // --bg overrides the scene's environment, which overrides the black default.
     Color bg = o.hasBg ? o.bgColor : setup.background;
 
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
+    integrator->setEnvironment(resolveEnv(o, setup));
 
     Image image(o.width, o.height);
     Renderer renderer(o.spp);
@@ -230,8 +266,10 @@ int main(int argc, char** argv) {
 
     QApplication app(argc, argv);
     SceneSetup setup = buildScene(o);
+    applyAccel(setup.scene, o.accel);
     Color bg = o.hasBg ? o.bgColor : setup.background;
     auto integrator = makeIntegrator(o.integratorName, o.maxDepth, bg);
+    integrator->setEnvironment(resolveEnv(o, setup));
 
     Gui window(o.width, o.height, setup.scene, setup.camera, *integrator, o.spp);
     window.show();

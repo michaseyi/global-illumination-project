@@ -30,6 +30,7 @@ set(SOURCES
     src/shading/light.cpp
     src/shading/image_texture.cpp
     src/shading/pbr_material.cpp
+    src/shading/environment.cpp
 
     src/render/renderer.cpp
     src/render/direct_lighting_integrator.cpp
@@ -39,6 +40,7 @@ set(SOURCES
     src/accel/bbox.cpp
     src/accel/octree.cpp
     src/accel/bvh.cpp
+    src/accel/linear_list.cpp
 
     src/io/image.cpp
     src/io/obj_loader.cpp
@@ -74,6 +76,7 @@ set(HEADERS
     include/shading/light.h
     include/shading/image_texture.h
     include/shading/pbr_material.h
+    include/shading/environment.h
 
     include/render/renderer.h
     include/render/integrator.h
@@ -85,6 +88,7 @@ set(HEADERS
     include/accel/accel_structure.h
     include/accel/octree.h
     include/accel/bvh.h
+    include/accel/linear_list.h
 
     include/io/image.h
     include/io/obj_loader.h

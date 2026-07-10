@@ -1,6 +1,12 @@
-// scene wiring: bvh for bounded shapes + brute-force for unbounded ones.
+// scene wiring: a pluggable accel structure over bounded shapes (bvh by
+// default, octree / brute-force via setAccel) + a linear scan for unbounded
+// ones (planes).
 
 #include "scene/scene.h"
+
+#include "accel/bvh.h"
+#include "accel/linear_list.h"
+#include "accel/octree.h"
 #include "shading/light.h"
 
 void Scene::addPrimitive(const std::shared_ptr<Primitive>& primitive) {
@@ -33,12 +39,24 @@ void Scene::build() {
             bounded.push_back(p.get());
         }
     }
-    m_bvh.build(bounded);
+    switch (m_accelType) {
+        case AccelType::Octree: m_accel.reset(new Octree()); break;
+        case AccelType::Linear: m_accel.reset(new LinearList()); break;
+        case AccelType::BVH:
+        default:                m_accel.reset(new BVH()); break;
+    }
+    m_accel->build(bounded);
     m_built = true;
 }
 
+void Scene::setAccel(AccelType type) {
+    if (type == m_accelType && m_built) return;
+    m_accelType = type;
+    if (m_built) build();
+}
+
 bool Scene::intersect(const Ray& ray, HitRecord& rec) const {
-    bool hit = m_bvh.intersect(ray, rec);
+    bool hit = m_accel && m_accel->intersect(ray, rec);
     double closest = hit ? rec.t : ray.tMax;
     for (Primitive* p : m_unbounded) {
         Ray local = ray;
@@ -54,7 +72,7 @@ bool Scene::intersect(const Ray& ray, HitRecord& rec) const {
 }
 
 bool Scene::occluded(const Ray& ray) const {
-    if (m_bvh.occluded(ray)) return true;
+    if (m_accel && m_accel->occluded(ray)) return true;
     for (Primitive* p : m_unbounded) {
         HitRecord tmp;
         if (p->intersect(ray, tmp)) return true;

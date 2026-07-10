@@ -273,12 +273,16 @@ std::shared_ptr<Material> buildMaterial(const Model& model,
                      pbr.baseColorFactor.size() == 4 ? pbr.baseColorFactor[1] : 1.0,
                      pbr.baseColorFactor.size() == 4 ? pbr.baseColorFactor[2] : 1.0);
 
-    // transmissive materials (glass/windows) -> dielectric, so light passes
-    // through. without this a glass window is an opaque wall that seals the room.
+    // transmissive materials (glass/windows) -> THIN dielectric: fresnel
+    // reflection + straight-through tinted transmission. architectural glazing
+    // is a thin pane whose parallel faces cancel refraction; modeling it as
+    // solid glass bends the view (the whole window shifted toward the sky) and
+    // an exporter's pane geometry rarely supports clean entry/exit refraction.
     if (extScalar(m, "KHR_materials_transmission", "transmissionFactor", 0.0) > 0.5) {
         double ior = extScalar(m, "KHR_materials_ior", "ior", 1.5);
         return std::make_shared<DielectricMaterial>(
-            1.0, ior > 1.0 ? ior : 1.5, Color(1.0), baseFactor);
+            1.0, ior > 1.0 ? ior : 1.5, Color(1.0), baseFactor, 0.0,
+            /*thin=*/true);
     }
 
     // procedural mirror/chrome shaders can't be expressed in glTF's metallic-
