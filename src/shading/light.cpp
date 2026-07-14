@@ -98,3 +98,57 @@ Color AreaLight::L(const glm::dvec3& n, const glm::dvec3& w) const {
     if (m_twoSided) return m_emission;
     return glm::dot(n, w) > 0.0 ? m_emission : Color(0.0);
 }
+
+double AreaLight::totalArea() const {
+    return m_shape ? m_shape->area() : 0.0;
+}
+
+MeshAreaLight::MeshAreaLight(std::vector<Primitive*> triangles,
+                            const Color& emission, bool twoSided)
+    : AreaLight(emission, twoSided), m_tris(std::move(triangles)) {
+    m_cdf.reserve(m_tris.size());
+    double running = 0.0;
+    for (Primitive* t : m_tris) {
+        running += std::max(0.0, t->area());
+        m_cdf.push_back(running);
+    }
+    m_totalArea = running;
+}
+
+LightSample MeshAreaLight::sampleLi(const glm::dvec3& ref,
+                                    const glm::dvec3& /*refNormal*/,
+                                    double u1, double u2) const {
+    LightSample s;
+    if (m_tris.empty() || m_totalArea <= 0.0) return s;
+
+    // choose a triangle with probability proportional to its area, then reuse
+    // the leftover of u1 as a fresh uniform inside that triangle.
+    double target = u1 * m_totalArea;
+    auto it = std::lower_bound(m_cdf.begin(), m_cdf.end(), target);
+    int idx = int(it - m_cdf.begin());
+    if (idx >= int(m_tris.size())) idx = int(m_tris.size()) - 1;
+    double lo = idx > 0 ? m_cdf[idx - 1] : 0.0;
+    double triArea = m_cdf[idx] - lo;
+    double u1p = triArea > 0.0 ? (target - lo) / triArea : u1;
+
+    ShapeSample ps = m_tris[idx]->sample(u1p, u2);
+    glm::dvec3 diff = ps.position - ref;
+    double d2 = glm::dot(diff, diff);
+    if (d2 <= 0.0) return s;
+    double d = std::sqrt(d2);
+    glm::dvec3 wi = diff / d;
+    double cosOnLight = glm::dot(ps.normal, -wi);
+    if (!m_twoSided && cosOnLight <= 0.0) return s;
+    if (m_twoSided) cosOnLight = std::abs(cosOnLight);
+    if (cosOnLight <= 0.0) return s;
+
+    s.position = ps.position;
+    s.normal = ps.normal;
+    s.wi = wi;
+    s.distance = d;
+    s.L = m_emission;
+    // sampling density is uniform over the whole mesh: area pdf = 1/totalArea.
+    s.pdf = d2 / (m_totalArea * cosOnLight);
+    s.isDelta = false;
+    return s;
+}

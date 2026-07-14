@@ -27,6 +27,23 @@ void Scene::addAreaLight(const std::shared_ptr<Primitive>& shape,
     m_built = false;
 }
 
+void Scene::addMeshAreaLight(const std::vector<std::shared_ptr<Primitive>>& tris,
+                             const Color& emission, bool twoSided) {
+    if (tris.empty()) return;
+    std::vector<Primitive*> raw;
+    raw.reserve(tris.size());
+    for (const auto& t : tris) {
+        m_primitives.push_back(t);
+        m_emissive.push_back(t);
+        raw.push_back(t.get());
+    }
+    auto light = std::make_shared<MeshAreaLight>(std::move(raw), emission,
+                                                 twoSided);
+    for (const auto& t : tris) t->setAreaLight(light.get());
+    m_lights.push_back(std::static_pointer_cast<Light>(light));
+    m_built = false;
+}
+
 void Scene::build() {
     std::vector<Primitive*> bounded;
     m_unbounded.clear();

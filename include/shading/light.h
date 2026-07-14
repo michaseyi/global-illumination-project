@@ -4,6 +4,7 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <vector>
 
 #include "core/color.h"
 
@@ -91,14 +92,41 @@ public:
     bool isDelta() const override { return false; }
 
     // emitted radiance from this light along `w` at a surface point with normal n.
-    Color L(const glm::dvec3& n, const glm::dvec3& w) const;
+    virtual Color L(const glm::dvec3& n, const glm::dvec3& w) const;
+
+    // total emitting area; used by the integrator to convert the light-sample
+    // pdf between area and solid-angle measure (mesh lights override it).
+    virtual double totalArea() const;
 
     const Color& emission() const { return m_emission; }
     Primitive* shape() const { return m_shape.get(); }
     bool twoSided() const { return m_twoSided; }
 
-private:
+protected:
+    AreaLight(const Color& emission, bool twoSided)
+        : m_shape(nullptr), m_emission(emission), m_twoSided(twoSided) {}
+
     std::shared_ptr<Primitive> m_shape;
     Color m_emission;
     bool  m_twoSided;
+};
+
+// area light over a group of triangles (an emissive mesh). samples a point on
+// the whole set proportional to triangle area, so a finely tessellated fixture
+// is ONE light instead of thousands - this is what makes next-event estimation
+// tractable for emissive meshes (uniform per-triangle lights give fireflies).
+class MeshAreaLight : public AreaLight {
+public:
+    MeshAreaLight(std::vector<Primitive*> triangles,
+                  const Color& emission, bool twoSided = true);
+
+    LightSample sampleLi(const glm::dvec3& ref,
+                         const glm::dvec3& refNormal,
+                         double u1, double u2) const override;
+    double totalArea() const override { return m_totalArea; }
+
+private:
+    std::vector<Primitive*> m_tris;
+    std::vector<double> m_cdf;   // cumulative area; m_cdf.back() == m_totalArea
+    double m_totalArea = 0.0;
 };

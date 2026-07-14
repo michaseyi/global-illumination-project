@@ -21,7 +21,10 @@ namespace {
 // `wi` that lands on `hit`. converted to solid-angle measure at `ref`.
 double areaPdfToSolidAngle(const HitRecord& hit, const glm::dvec3& ref) {
     if (!hit.primitive) return 0.0;
-    double area = hit.primitive->area();
+    // use the whole light's emitting area (a mesh light samples over all its
+    // triangles, not just the one that was hit), else the single primitive.
+    double area = hit.areaLight ? hit.areaLight->totalArea()
+                                : hit.primitive->area();
     if (area <= 0.0) return 0.0;
     glm::dvec3 to = hit.position - ref;
     double d2 = glm::dot(to, to);

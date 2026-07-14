@@ -31,6 +31,12 @@ public:
     void addAreaLight(const std::shared_ptr<Primitive>& shape,
                       const std::shared_ptr<AreaLight>& light);
 
+    // bind a group of emissive triangles as a single mesh area light (sampled
+    // proportional to area). all triangles become scene primitives bound to the
+    // one light, which is appended to the light list once.
+    void addMeshAreaLight(const std::vector<std::shared_ptr<Primitive>>& tris,
+                          const Color& emission, bool twoSided = true);
+
     // build the acceleration structure from currently registered primitives.
     // call once after the scene is fully populated and before any rendering.
     void build();

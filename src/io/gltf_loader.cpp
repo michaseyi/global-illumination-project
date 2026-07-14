@@ -173,15 +173,18 @@ struct TextureBuilder {
 
     // extract one channel of a texture as a single-channel linear map (used to
     // split glTF's packed metallic-roughness: roughness=G, metallic=B).
-    std::shared_ptr<ImageTexture> channel(int textureIndex, int ch) {
+    std::shared_ptr<ImageTexture> channel(int textureIndex, int ch,
+                                          bool invert = false) {
         const tinygltf::Image* img = imageFor(textureIndex);
         if (!img || ch >= img->component) return nullptr;
-        std::string key = "ch" + std::to_string(textureIndex) + "_" + std::to_string(ch);
+        std::string key = "ch" + std::to_string(textureIndex) + "_" +
+                          std::to_string(ch) + (invert ? "i" : "");
         auto it = cache.find(key);
         if (it != cache.end()) return it->second;
         std::vector<unsigned char> single(size_t(img->width) * img->height);
         for (size_t i = 0; i < single.size(); ++i) {
-            single[i] = img->image[i * img->component + ch];
+            unsigned char v = img->image[i * img->component + ch];
+            single[i] = invert ? (unsigned char)(255 - v) : v;
         }
         auto t = ImageTexture::fromPixels(single.data(), img->width, img->height, 1,
                                           /*sRGB=*/false);
@@ -269,6 +272,51 @@ std::shared_ptr<Material> buildMaterial(const Model& model,
         return std::make_shared<EmissiveMaterial>(Color(ke.r, ke.g, ke.b));
     }
 
+    // older spec/gloss workflow (KHR_materials_pbrSpecularGlossiness): map its
+    // diffuse -> basecolor and glossiness -> roughness so textured assets
+    // authored this way don't fall through to a blank default material.
+    auto sg = m.extensions.find("KHR_materials_pbrSpecularGlossiness");
+    if (sg != m.extensions.end()) {
+        const tinygltf::Value& e = sg->second;
+        auto mat = std::make_shared<PbrMaterial>();
+        Color df(1.0);
+        if (e.Has("diffuseFactor")) {
+            const auto& a = e.Get("diffuseFactor");
+            if (a.IsArray() && a.ArrayLen() >= 3)
+                df = Color(a.Get(0).GetNumberAsDouble(),
+                           a.Get(1).GetNumberAsDouble(),
+                           a.Get(2).GetNumberAsDouble());
+        }
+        mat->setBasecolorFactor(df);
+        if (e.Has("diffuseTexture") && e.Get("diffuseTexture").Has("index")) {
+            int ti = int(e.Get("diffuseTexture").Get("index").GetNumberAsDouble());
+            if (auto t = tb.color(ti, /*sRGB=*/true))
+                mat->setBasecolor(std::static_pointer_cast<Texture>(t));
+        }
+        mat->setMetallicFactor(0.0);  // spec-gloss is dielectric; approximate
+        double gloss = e.Has("glossinessFactor")
+                           ? e.Get("glossinessFactor").GetNumberAsDouble() : 1.0;
+        // glossiness lives in the spec-gloss texture's ALPHA (roughness =
+        // 1 - glossiness). without it, glossinessFactor is usually a useless
+        // default of 1.0, so fall back to a matte value instead of mirror.
+        bool gotRough = false;
+        if (e.Has("specularGlossinessTexture") &&
+            e.Get("specularGlossinessTexture").Has("index")) {
+            int si = int(e.Get("specularGlossinessTexture").Get("index")
+                             .GetNumberAsDouble());
+            if (auto r = tb.channel(si, 3, /*invert=*/true)) {
+                mat->setRoughness(r);
+                mat->setRoughnessFactor(1.0);
+                gotRough = true;
+            }
+        }
+        if (!gotRough) mat->setRoughnessFactor(std::max(0.5, 1.0 - gloss));
+        if (m.normalTexture.index >= 0)
+            if (auto n = tb.color(m.normalTexture.index, /*sRGB=*/false))
+                mat->setNormal(n);
+        return mat;
+    }
+
     Color baseFactor(pbr.baseColorFactor.size() == 4 ? pbr.baseColorFactor[0] : 1.0,
                      pbr.baseColorFactor.size() == 4 ? pbr.baseColorFactor[1] : 1.0,
                      pbr.baseColorFactor.size() == 4 ? pbr.baseColorFactor[2] : 1.0);
@@ -351,6 +399,7 @@ void emitPrimitive(Scene& scene, const Model& model,
                    const std::shared_ptr<Material>& material,
                    const glm::dmat4& world, int texCoordSet,
                    const UvXform& xform,
+                   std::vector<std::shared_ptr<Primitive>>* emissiveSink,
                    glm::dvec3& bbMin, glm::dvec3& bbMax) {
     if (prim.mode != TINYGLTF_MODE_TRIANGLES && prim.mode != -1) return;
 
@@ -377,6 +426,12 @@ void emitPrimitive(Scene& scene, const Model& model,
                            s * su + c * sv + xform.offset.y);
         }
     }
+    // glTF UVs are top-left origin (V down); ImageTexture assumes OBJ's
+    // bottom-left (V up) and flips V internally, so pre-flip here to cancel it
+    // and sample the correct row. without this every glTF texture is mirrored
+    // vertically - invisible on tiling surfaces, but it swaps regions of a
+    // character's UV atlas.
+    for (auto& t : uv) t.y = 1.0 - t.y;
 
     glm::dmat3 normalMatrix = glm::dmat3(glm::transpose(glm::inverse(world)));
     auto P = [&](uint32_t i) { return glm::dvec3(world * glm::dvec4(pos[i], 1.0)); };
@@ -405,13 +460,14 @@ void emitPrimitive(Scene& scene, const Model& model,
             glm::dvec3 fn = glm::normalize(glm::cross(p1 - p0, p2 - p0));
             n0 = n1 = n2 = fn;
         }
-        if (hasUV) {
-            scene.addPrimitive(std::make_shared<Triangle>(
-                p0, p1, p2, n0, n1, n2, uv[a], uv[b], uv[c], material));
-        } else {
-            scene.addPrimitive(std::make_shared<Triangle>(
-                p0, p1, p2, n0, n1, n2, material));
-        }
+        auto tri = hasUV
+            ? std::make_shared<Triangle>(p0, p1, p2, n0, n1, n2,
+                                         uv[a], uv[b], uv[c], material)
+            : std::make_shared<Triangle>(p0, p1, p2, n0, n1, n2, material);
+        // emissive triangles are collected per material and later bound as a
+        // single mesh area light; others go straight into the scene.
+        if (emissiveSink) emissiveSink->push_back(tri);
+        else              scene.addPrimitive(tri);
     }
 }
 
@@ -429,11 +485,13 @@ struct Traversal {
     std::vector<std::shared_ptr<Material>>& materials;
     const std::vector<int>& matTexCoord;
     const std::vector<UvXform>& matUvXform;
+    const std::vector<Color>& matEmission;
     TextureBuilder& tb;
     double lightScale;
     std::shared_ptr<Material> fallback;
 
     std::vector<FoundCamera> cameras;
+    std::map<int, std::vector<std::shared_ptr<Primitive>>> emissiveByMat;
     glm::dvec3 bbMin{1e18};
     glm::dvec3 bbMax{-1e18};
 
@@ -451,7 +509,12 @@ struct Traversal {
                 int tc = valid ? matTexCoord[prim.material] : 0;
                 static const UvXform kNoXform;
                 const UvXform& xf = valid ? matUvXform[prim.material] : kNoXform;
-                emitPrimitive(scene, model, prim, mat, world, tc, xf, bbMin, bbMax);
+                const Color emit = valid ? matEmission[prim.material] : Color(0.0);
+                std::vector<std::shared_ptr<Primitive>>* sink =
+                    (emit.r + emit.g + emit.b > 1e-4)
+                        ? &emissiveByMat[prim.material] : nullptr;
+                emitPrimitive(scene, model, prim, mat, world, tc, xf, sink,
+                              bbMin, bbMax);
             }
         }
         if (node.light >= 0 && node.light < (int)model.lights.size()) {
@@ -525,24 +588,45 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
     std::vector<std::shared_ptr<Material>> materials;
     std::vector<int> matTexCoord;
     std::vector<UvXform> matUvXform;
+    std::vector<Color> matEmission;
     materials.reserve(model.materials.size());
     matTexCoord.reserve(model.materials.size());
     matUvXform.reserve(model.materials.size());
+    matEmission.reserve(model.materials.size());
     for (const auto& m : model.materials) {
         materials.push_back(buildMaterial(model, m, tb));
         matTexCoord.push_back(materialTexCoord(m));
         matUvXform.push_back(materialUvXform(m));
+        glm::dvec3 ke(m.emissiveFactor.size() == 3
+                          ? glm::dvec3(m.emissiveFactor[0], m.emissiveFactor[1],
+                                       m.emissiveFactor[2])
+                          : glm::dvec3(0.0));
+        ke *= emissiveStrength(m);
+        matEmission.push_back(Color(ke.r, ke.g, ke.b));
     }
     auto fallback = std::make_shared<LambertMaterial>(Color(0.72, 0.72, 0.72));
 
-    Traversal trav{model, scene, materials, matTexCoord, matUvXform, tb,
-                   lightScale, fallback, {}};
+    Traversal trav{model, scene, materials, matTexCoord, matUvXform,
+                   matEmission, tb, lightScale, fallback, {}};
     int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
     if (model.scenes.empty()) {
         std::cerr << "[gltf] no scenes in file\n";
         return nullptr;
     }
     for (int root : model.scenes[sceneIndex].nodes) trav.visit(root, glm::dmat4(1.0));
+
+    // one mesh area light per emissive material (all its triangles sampled by
+    // area), instead of thousands of one-triangle lights.
+    size_t emissiveTris = 0;
+    for (auto& kv : trav.emissiveByMat) {
+        emissiveTris += kv.second.size();
+        scene.addMeshAreaLight(kv.second, matEmission[kv.first], /*twoSided=*/true);
+    }
+    if (!trav.emissiveByMat.empty()) {
+        std::cerr << "[gltf] " << trav.emissiveByMat.size()
+                  << " emissive mesh light(s) from " << emissiveTris
+                  << " triangles\n";
+    }
 
     // optional ceiling area light spanning the room's bounding box, facing down.
     if (ceilingLight > 0.0 && trav.bbMax.y > trav.bbMin.y) {
@@ -564,11 +648,32 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
                   << " emission=" << ceilingLight << "\n";
     }
 
+    const bool haveBounds = trav.bbMax.x >= trav.bbMin.x;
+    const glm::dvec3 center = haveBounds ? 0.5 * (trav.bbMin + trav.bbMax)
+                                         : glm::dvec3(0.0);
+    const double radius = haveBounds
+        ? 0.5 * glm::length(trav.bbMax - trav.bbMin) : 1.0;
+
+    // no lights and nothing emissive? add a default key + fill so a bare model
+    // (common for asset downloads) is actually visible instead of black.
+    Color defaultBg(0.0);
+    if (scene.lights().empty()) {
+        // soft studio setup: bright even ambient (dome-like) + a gentle front
+        // key from the camera side (glTF forward is -Z) so the model reads
+        // clean and matte rather than harshly side-lit.
+        scene.addLight(std::make_shared<DirectionalLight>(
+            glm::normalize(glm::dvec3(0.25, -0.45, 0.9)), Color(1.5, 1.48, 1.4)));
+        defaultBg = Color(0.55, 0.57, 0.6);
+        std::cerr << "[gltf] no lights in file - added a default key light + "
+                     "ambient fill\n";
+    }
+
     scene.build();
 
-    // camera: pick the requested one (by name/index), else the first.
-    glm::dvec3 eye(0, 1, 3), target(0, 1, 0), up(0, 1, 0);
-    double fovDeg = 45.0;
+    // camera: pick the requested one (by name/index), else auto-frame the model.
+    double fovDeg = 40.0;
+    glm::dvec3 eye = center + glm::dvec3(0.0, 0.0, radius * 3.0);
+    glm::dvec3 target = center, up(0, 1, 0);
     int pick = selectCamera(trav.cameras, cameraSelect);
     if (pick >= 0) {
         const FoundCamera& fc = trav.cameras[pick];
@@ -581,6 +686,15 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
         }
         std::cerr << "[gltf] using camera \"" << fc.nodeName << "\" ("
                   << (pick + 1) << "/" << trav.cameras.size() << ")\n";
+    } else if (haveBounds) {
+        // frame the bounding sphere from a 3/4 front angle. glTF's forward is
+        // -Z, so the camera sits on -Z to look at the model's face; a slight
+        // +X/+Y offset gives the three-quarter view.
+        double halfFov = fovDeg * 0.5 * 3.14159265358979323846 / 180.0;
+        double dist = radius / std::sin(halfFov) * 1.15;
+        eye = center + glm::normalize(glm::dvec3(0.4, 0.3, -1.0)) * dist;
+        target = center;
+        std::cerr << "[gltf] no camera in file - auto-framing the model\n";
     } else {
         std::cerr << "[gltf] no camera in file - using a default view\n";
     }
@@ -603,5 +717,5 @@ std::unique_ptr<SceneSetup> GltfLoader::loadFromFile(const std::string& path,
               << trav.cameras.size() << " cameras\n";
 
     return std::unique_ptr<SceneSetup>(
-        new SceneSetup{std::move(scene), camera});
+        new SceneSetup{std::move(scene), camera, defaultBg});
 }
