@@ -1,0 +1,17 @@
+{
+  // chrome + glass spheres lit purely by the forest hdr (image-based lighting
+  // demo - no lamps in the scene at all).
+  "environment": { "file": "../env/forest_2k.hdr", "scale": 1.0 },
+  "camera": { "eye": [0, 1.2, 4], "target": [0, 0.8, 0], "up": [0,1,0], "fov": 50 },
+  "materials": {
+    "mirror": { "type": "mirror", "color": [0.95, 0.95, 0.95] },
+    "floor":  { "type": "lambert", "color": [0.6, 0.6, 0.6] },
+    "glass":  { "type": "dielectric", "ior": 1.5 }
+  },
+  "objects": [
+    { "type": "quad",   "material": "floor",  "origin": [-6,0,6], "u": [12,0,0], "v": [0,0,-12] },
+    { "type": "sphere", "material": "mirror", "center": [-0.9, 0.8, 0], "radius": 0.8 },
+    { "type": "sphere", "material": "glass",  "center": [ 0.9, 0.6, 0.6], "radius": 0.6 }
+  ],
+  "lights": []
+}

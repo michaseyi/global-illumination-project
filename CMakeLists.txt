@@ -17,14 +17,20 @@ set(SOURCES
     src/app/scene_factory.cpp
 
     src/core/random.cpp
+    src/core/sampling.cpp
+    src/core/sampler.cpp
     src/scene/camera.cpp
     src/scene/scene.cpp
     src/geometry/sphere.cpp
     src/geometry/triangle.cpp
     src/geometry/plane.cpp
+    src/geometry/quad.cpp
     src/shading/material.cpp
     src/shading/texture.cpp
     src/shading/light.cpp
+    src/shading/image_texture.cpp
+    src/shading/pbr_material.cpp
+    src/shading/environment.cpp
 
     src/render/renderer.cpp
     src/render/direct_lighting_integrator.cpp
@@ -34,9 +40,12 @@ set(SOURCES
     src/accel/bbox.cpp
     src/accel/octree.cpp
     src/accel/bvh.cpp
+    src/accel/linear_list.cpp
 
     src/io/image.cpp
     src/io/obj_loader.cpp
+    src/io/scene_loader.cpp
+    src/io/gltf_loader.cpp
 )
 
 set(HEADERS
@@ -48,6 +57,9 @@ set(HEADERS
     include/core/color.h
     include/core/random.h
     include/core/constants.h
+    include/core/frame.h
+    include/core/sampling.h
+    include/core/sampler.h
 
     include/scene/hit_record.h
     include/scene/camera.h
@@ -57,10 +69,14 @@ set(HEADERS
     include/geometry/sphere.h
     include/geometry/triangle.h
     include/geometry/plane.h
+    include/geometry/quad.h
     include/shading/shading.h
     include/shading/material.h
     include/shading/texture.h
     include/shading/light.h
+    include/shading/image_texture.h
+    include/shading/pbr_material.h
+    include/shading/environment.h
 
     include/render/renderer.h
     include/render/integrator.h
@@ -72,9 +88,13 @@ set(HEADERS
     include/accel/accel_structure.h
     include/accel/octree.h
     include/accel/bvh.h
+    include/accel/linear_list.h
 
     include/io/image.h
     include/io/obj_loader.h
+    include/io/scene_loader.h
+    include/io/json.h
+    include/io/gltf_loader.h
 )
 
 add_executable(global_illu ${SOURCES} ${HEADERS})

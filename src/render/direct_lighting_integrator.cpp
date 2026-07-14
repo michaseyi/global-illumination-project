@@ -1,53 +1,51 @@
-// Direct illumination integrator with hard shadows.
-
 #include "render/direct_lighting_integrator.h"
 
-#include <glm/glm.hpp>
 #include <algorithm>
-#include <memory>
+#include <glm/glm.hpp>
 
 #include "scene/scene.h"
 #include "shading/light.h"
 #include "shading/material.h"
 #include "scene/hit_record.h"
 #include "core/constants.h"
+#include "core/sampler.h"
 
 DirectLightingIntegrator::DirectLightingIntegrator(int maxDepth,
                                                    const Color& background)
     : m_maxDepth(maxDepth), m_background(background) {}
 
-Color DirectLightingIntegrator::Li(const Ray& ray,
-                                   const Scene& scene,
-                                   int depth) const {
-    if (depth > m_maxDepth) {
-        return Color(0.0, 0.0, 0.0);
-    }
-
+Color DirectLightingIntegrator::Li(const Ray& ray, const Scene& scene,
+                                   Sampler& sampler) const {
     HitRecord rec;
+    if (!scene.intersect(ray, rec))
+        return escapedRadiance(ray.direction, m_background);
 
-    // If the ray misses the scene, return the background color.
-    if (!scene.intersect(ray, rec)) {
-        return m_background;
+    Color L(0.0);
+    if (rec.areaLight) {
+        L = rec.areaLight->L(rec.geometricNormal, -ray.direction);
+    } else if (rec.material) {
+        L = rec.material->emission(rec);
     }
+    if (!rec.material || rec.material->isDelta()) return L;
 
-    Color result = rec.material ? rec.material->emission(rec) : Color(0.0, 0.0, 0.0);
-
-    // wo is the outgoing direction toward the camera/viewer.
     glm::dvec3 wo = -ray.direction;
+    const auto& lights = scene.lights();
+    if (lights.empty()) return L;
 
-    // Traverse all lights in the scene.
-    for (const auto& lightBase : scene.lights()) {
-        // The starter scene only uses point lights.
-        auto pointLight = std::dynamic_pointer_cast<PointLight>(lightBase);
-        if (!pointLight) {
-            continue;
-        }
-
-        // TODO:        
-        // Compute the contribution of this light source:
-        // determine the light direction, test visibility with a shadow ray,
-        // evaluate the material response, and accumulate the result.
+    for (const auto& light : lights) {
+        glm::dvec2 lu = sampler.get2D();
+        LightSample ls = light->sampleLi(rec.position, rec.shadingNormal,
+                                         lu.x, lu.y);
+        if (ls.pdf <= 0.0) continue;
+        glm::dvec3 to = ls.position - rec.position;
+        double dist = glm::length(to);
+        Ray shadow(rec.position + 1e-4 * rec.shadingNormal,
+                   ls.wi, 1e-4, dist - 1e-3);
+        if (scene.occluded(shadow)) continue;
+        Color f = rec.material->evaluate(rec, wo, ls.wi);
+        double cosTheta = std::max(0.0, glm::dot(rec.shadingNormal, ls.wi));
+        if (cosTheta <= 0.0) continue;
+        L += f * ls.L * cosTheta / ls.pdf;
     }
-
-    return result;
+    return L;
 }

@@ -1,0 +1,21 @@
+{
+  // garage interior with the forest hdr through the thin-glass windows.
+  // first unzip the model once:  unzip assets/models/garage/garage_obj.zip -d assets/models/garage
+  // render:  ./build/global_illu --headless --scene assets/scenes/garage_beauty.json --w 960 --h 540 --spp 96 --out garage.png
+  "environment": { "file": "../env/forest_2k.hdr", "scale": 0.9, "rotation": 270 },
+  "camera": {
+    "eye":    [-3.751, 2.005, 4.353],
+    "target": [-2.219, 1.548, -1.430],
+    "up":     [0.02, 0.997, -0.074],
+    "fov":    52
+  },
+  "materials": { "shell": { "type": "lambert", "color": [0.72,0.72,0.72] } },
+  "objects": [
+    { "type": "mesh", "material": "shell", "useFileMaterials": true,
+      "file": "../models/garage/garage.obj" }
+  ],
+  "lights": [
+    { "type": "area", "color": [4.2,4.0,3.6], "twoSided": true,
+      "origin": [-4.6,4.45,-7.0], "u": [9.2,0,0], "v": [0,0,11.5] }
+  ]
+}

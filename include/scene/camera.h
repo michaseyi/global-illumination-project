@@ -1,4 +1,4 @@
-// Simple pinhole camera used to generate primary rays.
+// pinhole + optional thin-lens camera.
 
 #pragma once
 
@@ -13,15 +13,18 @@ public:
            const glm::dvec3& up,
            double verticalFovDegrees,
            int imageWidth,
-           int imageHeight);
+           int imageHeight,
+           double aperture = 0.0,
+           double focusDistance = 1.0);
 
-    // Generate a ray through an arbitrary sample location inside the image.
-    Ray generateRay(double sampleX, double sampleY) const;
+    // sample coordinates are pixel-space (in [0,w] and [0,h]); lens uniforms
+    // (lu, lv) are in [0,1) and ignored when the aperture is zero.
+    Ray generateRay(double sampleX, double sampleY,
+                    double lu = 0.5, double lv = 0.5) const;
 
-    // Convenience overload for the pixel center.
     Ray generateRay(int px, int py) const;
 
-    int imageWidth() const { return m_imageWidth; }
+    int imageWidth() const  { return m_imageWidth; }
     int imageHeight() const { return m_imageHeight; }
 
 private:
@@ -35,4 +38,7 @@ private:
 
     int m_imageWidth;
     int m_imageHeight;
+
+    double m_lensRadius;
+    double m_focusDistance;
 };

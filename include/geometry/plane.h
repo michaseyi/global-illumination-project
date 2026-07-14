@@ -1,4 +1,4 @@
-// Infinite plane primitive, useful for simple floors or walls.
+// infinite plane (kept for legacy demos; excluded from the bvh).
 
 #pragma once
 
@@ -15,6 +15,7 @@ public:
           std::shared_ptr<Material> material);
 
     bool intersect(const Ray& ray, HitRecord& rec) const override;
+    BBox bbox() const override;
 
 private:
     glm::dvec3 m_point;

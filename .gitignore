@@ -3,3 +3,11 @@ Slides-old/
 .DS_Store
 .cache/
 .vscode/
+
+# render outputs at repo root
+/render.png
+/cornell.png
+/cornell_*.png
+
+# unpacked from garage_obj.zip (104MB, over github's file limit)
+assets/models/garage/garage.obj
